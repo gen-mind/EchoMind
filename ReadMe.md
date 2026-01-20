@@ -42,25 +42,33 @@ EchoMind is an **Agentic Retrieval-Augmented Generation (RAG)** platform that go
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     EchoMind RAG Cluster                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────────┐  │
-│  │  Authentik   │  │ API Gateway  │  │     Agent Core        │  │
-│  │  (OIDC Auth) │→ │ REST + WS    │→ │ Semantic Kernel       │  │
-│  └──────────────┘  └──────────────┘  │ Planning + Memory     │  │
-│                                       └───────────────────────┘  │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────────┐  │
-│  │   Qdrant     │  │  PostgreSQL  │  │   Document Processing │  │
-│  │  Vector DB   │  │   Metadata   │  │ Chunking + Embedding  │  │
-│  └──────────────┘  └──────────────┘  └───────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-              ┌───────────────────────────────┐
-              │   Inference Cluster (Pluggable) │
-              │   TGI/vLLM  or  Cloud APIs     │
-              └───────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Clients
+        C[Web / API / Bot]
+    end
+
+    subgraph EchoMind["EchoMind RAG Cluster"]
+        AUTH[Authentik]
+        API[API Gateway]
+        AGENT[Agent Core<br/>Semantic Kernel]
+        PROC[Doc Processing]
+
+        subgraph Storage
+            QDRANT[(Qdrant)]
+            PG[(PostgreSQL)]
+        end
+    end
+
+    subgraph Inference["Inference Cluster"]
+        LLM[TGI/vLLM<br/>or Cloud APIs]
+    end
+
+    C --> AUTH --> API --> AGENT
+    AGENT --> QDRANT
+    AGENT --> LLM
+    PROC --> QDRANT
+    AGENT --> PG
 ```
 
 For detailed architecture with Mermaid diagrams, see [docs/architecture.md](docs/architecture.md).
