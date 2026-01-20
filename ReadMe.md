@@ -6,7 +6,7 @@
 **Agentic RAG for Enterprise**
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](license)
 
 *An AI platform that reasons, retrieves, and responds—deployable anywhere from public cloud to air-gapped SCIF facilities.*
 
@@ -176,4 +176,4 @@ We're building EchoMind in Python and welcome contributions in:
 
 ## License
 
-Apache 2.0 - See [LICENSE](license) for details.
+MIT License - See [LICENSE](license) for details.
