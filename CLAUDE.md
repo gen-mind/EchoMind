@@ -143,7 +143,7 @@ def update_document(self, doc_id: int, updates: dict, user_id: UUID) -> Document
 | Layer | Location | Purpose |
 |-------|----------|----------|
 | **Proto/Pydantic** | `echomind_lib/models/` | API contracts, NATS messages (generated, read-only) |
-| **SQLAlchemy ORM** | `echomind_lib/db/models.py` | DB persistence, audit columns, relationships |
+| **SQLAlchemy ORM** | `echomind_lib/db/models/` | DB persistence, audit columns, relationships |
 
 **Why separate?**
 - SQLAlchemy needs DB-only fields: `external_id`, `user_id_last_update`, `deleted_date`
@@ -155,7 +155,210 @@ def update_document(self, doc_id: int, updates: dict, user_id: UUID) -> Document
 2. **SQLAlchemy models may have extra fields** not in proto (audit, internal)
 3. **Use mappers** to convert between layers
 
-### 6. Message Bus Uses Proto
+**SQLAlchemy ORM models MUST be organized in a `models/` folder with one file per entity:**
+
+```
+echomind_lib/db/models/
+├── __init__.py          # Re-exports all models
+├── base.py              # Shared imports (Base, column types)
+├── user.py              # User
+├── llm.py               # LLM
+├── embedding_model.py   # EmbeddingModel
+├── assistant.py         # Assistant
+├── connector.py         # Connector
+├── document.py          # Document
+├── chat_session.py      # ChatSession
+├── chat_message.py      # ChatMessage, ChatMessageFeedback, ChatMessageDocument
+└── agent_memory.py      # AgentMemory
+```
+
+**ORM Organization Rules:**
+1. **One entity per file** (related entities like ChatMessage* can share a file)
+2. **Use `TYPE_CHECKING`** for forward references to avoid circular imports
+3. **`__init__.py` re-exports all models** for backward-compatible imports
+4. **Import pattern:** `from echomind_lib.db.models import User, Assistant`
+
+### 6. Service Architecture: Logic & Middleware Separation
+
+**ALL services MUST separate business logic from infrastructure concerns:**
+
+```
+src/{service_name}/
+├── logic/               # Business logic & domain services
+│   ├── exceptions.py    # Domain exceptions
+│   └── *_service.py     # Service classes
+├── middleware/          # Cross-cutting infrastructure concerns
+│   └── error_handler.py # Error handling, logging, etc.
+└── [entry_points]       # Service-specific entry points
+    ├── routes/          # (API service only) HTTP endpoints
+    ├── subscribers/     # (Worker services) NATS subscribers
+    └── main.py          # Service initialization
+```
+
+#### Universal Layer Responsibilities
+
+| Layer | Responsibility | Contains |
+|-------|----------------|----------|
+| **`logic/`** | Business logic & domain rules | Services, domain models, business validation |
+| **`middleware/`** | Infrastructure & cross-cutting | Error handling, logging, monitoring, protocol adapters |
+| **Entry points** | Interface adapters | HTTP routes, NATS subscribers, CLI commands, gRPC handlers |
+
+#### Examples Across Services
+
+**API Service:**
+```
+src/api/
+├── logic/
+│   ├── exceptions.py
+│   ├── user_service.py
+│   ├── assistant_service.py
+│   └── connector_service.py
+├── middleware/
+│   └── error_handler.py       # HTTP error conversion
+└── routes/                     # HTTP entry points
+    ├── users.py
+    └── assistants.py
+```
+
+**Semantic Service:**
+```
+src/semantic/
+├── logic/
+│   ├── exceptions.py
+│   ├── document_processor.py
+│   ├── chunking_service.py
+│   └── embedding_service.py
+├── middleware/
+│   └── error_handler.py       # NATS error handling
+└── subscribers/                # NATS entry points
+    └── document_subscriber.py
+```
+
+**Embedder Service:**
+```
+src/embedder/
+├── logic/
+│   ├── exceptions.py
+│   └── embedding_service.py
+├── middleware/
+│   └── error_handler.py       # gRPC error handling
+└── grpc_server.py             # gRPC entry point
+```
+
+#### Entry Points: Thin Adapters
+
+Entry points are thin adapters that delegate to `logic/` services.
+
+```python
+# ✅ CORRECT: Thin entry point (API route example)
+@router.get("/{user_id}")
+async def get_user(user_id: int, db: DbSession) -> User:
+    service = UserService(db)
+    return await service.get_user_by_id(user_id)
+
+# ✅ CORRECT: Thin entry point (NATS subscriber example)
+async def handle_document_message(msg: NATSMessage):
+    service = DocumentService(db)
+    await service.process_document(msg.document_id)
+
+# ❌ WRONG: Business logic in entry point
+@router.get("/{user_id}")
+async def get_user(user_id: int, db: DbSession):
+    result = await db.execute(...)  # DB queries
+    if not result:  # Business logic
+        raise HTTPException(...)
+    # ... transformation logic
+```
+
+#### Logic Services: Domain Operations
+
+Services in `logic/` contain ALL business logic, orchestration, and domain rules.
+
+```python
+# logic/user_service.py
+class UserService:
+    """User business operations."""
+    
+    def __init__(self, db: AsyncSession):
+        self.db = db
+    
+    async def get_user_by_id(self, user_id: int) -> User:
+        """Get user with business validation."""
+        result = await self.db.execute(
+            select(UserORM).where(UserORM.id == user_id)
+        )
+        db_user = result.scalar_one_or_none()
+        
+        if not db_user:
+            raise NotFoundError("User", user_id)
+        
+        return User.model_validate(db_user, from_attributes=True)
+```
+
+#### Exception Handling Pattern
+
+1. **Services raise domain exceptions** from `logic/exceptions.py`
+2. **Middleware converts to protocol responses** (HTTP, gRPC status, NATS ack/nack)
+
+```python
+# logic/exceptions.py - Domain exceptions (shared)
+class NotFoundError(DomainError):
+    """Resource not found."""
+    pass
+
+# middleware/error_handler.py - Protocol-specific conversion
+# API service: HTTP conversion
+@app.exception_handler(NotFoundError)
+async def handle_not_found(req: Request, exc: NotFoundError):
+    return JSONResponse(status_code=404, content={"error": exc.message})
+
+# Semantic service: NATS conversion
+async def handle_message_error(exc: DomainError, msg: NATSMessage):
+    if isinstance(exc, NotFoundError):
+        await msg.nak()  # NATS negative acknowledgment
+    else:
+        await msg.term()  # NATS terminate
+```
+
+#### Rules
+
+1. **`logic/` is protocol-agnostic** - No HTTP, gRPC, NATS imports in logic services
+2. **Entry points are thin** - Only protocol handling, delegate to `logic/`
+3. **One service per domain** - `UserService`, `DocumentService`, `ChunkingService`
+4. **Services inject dependencies** - DB sessions, external clients, config
+5. **Raise domain exceptions** - Use `NotFoundError`, `ValidationError` from `logic/exceptions.py`
+6. **Middleware handles protocols** - Convert domain exceptions to HTTP/gRPC/NATS responses
+7. **Services are reusable** - Same `logic/` services used by routes, subscribers, CLI
+
+#### Testing Benefits
+
+Protocol-agnostic logic enables easier testing:
+
+```python
+# Unit test logic directly (no HTTP/gRPC needed)
+async def test_user_service():
+    mock_db = MockSession()
+    service = UserService(mock_db)
+    user = await service.get_user_by_id(1)
+    assert user.email == "test@example.com"
+
+# Integration test with real protocol
+async def test_http_endpoint(client: TestClient):
+    response = client.get("/api/v1/users/1")
+    assert response.status_code == 200
+```
+
+#### Migration Path
+
+For existing services with mixed logic:
+
+1. Create `logic/` folder
+2. Move domain logic to `*_service.py` files in `logic/`
+3. Extract exceptions to `logic/exceptions.py`
+4. Refactor entry points to be thin (call services)
+5. Move protocol-specific error handling to `middleware/`
+
+### 7. Message Bus Uses Proto
 
 **ALL messages sent to NATS JetStream MUST be serialized as Protocol Buffers.**
 
