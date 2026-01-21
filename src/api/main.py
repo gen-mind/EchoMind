@@ -30,7 +30,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import get_settings
 from api.middleware.error_handler import setup_error_handlers
-from api.middleware.rate_limit import RateLimitMiddleware
 from api.routes import assistants, chat, connectors, documents, embedding_models, health, llms, users
 from api.websocket.chat_handler import ChatHandler
 from echomind_lib.db.connection import close_db, init_db
@@ -207,12 +206,6 @@ def create_app() -> FastAPI:
     
     # Register error handlers
     setup_error_handlers(app)
-    
-    # Rate limit middleware
-    app.add_middleware(
-        RateLimitMiddleware,
-        requests_per_minute=settings.rate_limit_requests,
-    )
     
     # CORS middleware
     app.add_middleware(

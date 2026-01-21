@@ -13,10 +13,13 @@ src/proto/
 │   ├── connector.proto
 │   ├── document.proto
 │   ├── chat.proto
+│   ├── llm.proto
+│   ├── embedding_model.proto
 │   └── assistant.proto
-└── internal/        # Internal service objects
-    ├── embedding.proto
-    └── agent.proto
+├── internal/        # Internal service objects
+│   ├── embedding.proto
+│   └── agent.proto
+└── common.proto     # Shared types (pagination, enums)
 ```
 
 **CI Pipeline generates:**
@@ -37,7 +40,7 @@ EchoMind exposes two communication channels:
 | **WebSocket** | Real-time chat streaming, agent responses | WS/WSS |
 
 **Base URL**: `https://{host}/api/v1`
-**WebSocket URL**: `wss://{host}/ws/v1`
+**WebSocket URL**: `wss://{host}/api/v1/ws`
 
 ---
 
@@ -377,7 +380,7 @@ class MessageRole(str, Enum):
 ### Connection
 
 ```
-wss://{host}/ws/v1/chat?token={jwt_token}
+wss://{host}/api/v1/ws/chat?token={jwt_token}
 ```
 
 ### Message Protocol
@@ -575,13 +578,32 @@ GET /api/v1/documents?page=2&limit=20
 
 ## Rate Limiting
 
+**Rate limiting is handled by Traefik reverse proxy**, not the application.
+
+Configure rate limits in Traefik using the [RateLimit middleware](https://doc.traefik.io/traefik/middlewares/http/ratelimit/):
+
+```yaml
+# Example Traefik middleware configuration
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: api-ratelimit
+spec:
+  rateLimit:
+    average: 100        # requests per second
+    burst: 50           # max burst
+    period: 1m          # time window
+```
+
+**Recommended limits:**
+
 | Endpoint Type | Limit |
 |---------------|-------|
 | REST API | 100 requests/minute |
-| WebSocket messages | 30 messages/minute |
+| WebSocket connections | 10 connections/minute |
 | Document sync | 5 concurrent syncs |
 
-Rate limit headers:
+Rate limit headers (set by Traefik):
 ```http
 X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 95

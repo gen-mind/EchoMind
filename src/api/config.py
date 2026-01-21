@@ -80,9 +80,6 @@ class Settings(BaseSettings):
         description="Secret for HS256 validation (dev only)",
     )
     
-    # Rate Limiting
-    rate_limit_requests: int = Field(default=100, description="Requests per minute")
-    rate_limit_ws_messages: int = Field(default=30, description="WS messages per minute")
     
     # CORS
     cors_origins: list[str] = Field(
