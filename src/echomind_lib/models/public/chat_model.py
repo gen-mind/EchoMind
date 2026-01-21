@@ -7,12 +7,12 @@
 """
 
 import datetime
-from .common_model import PaginationRequest, PaginationResponse
+from ..common_model import PaginationRequest, PaginationResponse
 from enum import Enum as _Enum
 from google.protobuf import message as _message, message_factory
 from protobuf_pydantic_gen.ext import model2protobuf, pool, protobuf2model
 from pydantic import BaseModel, ConfigDict, Field as _Field
-from typing import List, Optional, Type
+from typing import Any, Dict, List, Optional, Type
 
 
 class ChatMode(_Enum):
@@ -61,8 +61,8 @@ class ChatMessage(BaseModel):
     token_count: Optional[int] = _Field(default=0)
     parent_message_id: Optional[int] = _Field(default=0)
     rephrased_query: Optional[str] = _Field(default="")
-    retrieval_context: Optional[Struct] = _Field(default=None)
-    tool_calls: Optional[Struct] = _Field(default=None)
+    retrieval_context: Optional[Dict[str, Any]] = _Field(default=None)
+    tool_calls: Optional[Dict[str, Any]] = _Field(default=None)
     error: Optional[str] = _Field(default="")
     creation_date: Optional[datetime.datetime] = _Field(default=None)
 

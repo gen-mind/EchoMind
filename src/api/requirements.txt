@@ -1,0 +1,40 @@
+# Web Framework
+fastapi==0.128.0
+uvicorn[standard]==0.40.0
+python-multipart==0.0.12
+
+# Database
+sqlalchemy[asyncio]==2.0.35
+asyncpg==0.29.0
+alembic==1.13.3
+
+# Data Validation
+pydantic==2.12.5
+pydantic-settings==2.12.0
+
+# Authentication & Security
+PyJWT[crypto]==2.10.1
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-dotenv==1.0.1
+
+# Message Queue
+nats-py==2.9.0
+
+# Storage & Cache
+minio==7.2.9
+miniopy-async==1.21.1
+redis[hiredis]==5.2.0
+
+# Vector Database
+qdrant-client==1.12.0
+
+# Protobuf
+protobuf==5.28.2
+protobuf-pydantic-gen==0.1.8
+
+# HTTP Client
+httpx==0.28.1
+
+# Utilities
+python-dateutil==2.9.0

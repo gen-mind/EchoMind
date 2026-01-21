@@ -7,7 +7,7 @@
 """
 
 import datetime
-from .common_model import PaginationRequest, PaginationResponse
+from ..common_model import PaginationRequest, PaginationResponse
 from google.protobuf import message as _message, message_factory
 from protobuf_pydantic_gen.ext import model2protobuf, pool, protobuf2model
 from pydantic import BaseModel, ConfigDict, Field as _Field

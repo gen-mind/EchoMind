@@ -4,6 +4,7 @@ EchoMind API Service - FastAPI Application.
 Main entry point for the REST API and WebSocket server.
 """
 
+import asyncio
 import logging
 import os
 
@@ -21,6 +22,10 @@ log_format = os.getenv(
 )
 logging.basicConfig(level=log_level, format=log_format)
 logger = logging.getLogger(__name__)
+
+# Suppress noisy NATS library errors
+logging.getLogger('nats.aio.client').setLevel(logging.CRITICAL)
+logging.getLogger('nats.aio.transport').setLevel(logging.CRITICAL)
 
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
@@ -138,6 +143,67 @@ def _register_health_checks(timeout: float) -> None:
     logger.info("Registered health checks: database, redis, qdrant, nats")
 
 
+async def _retry_db_connection(settings) -> None:
+    """Background task to retry database connection."""
+    while True:
+        await asyncio.sleep(30)
+        try:
+            await init_db(settings.database_url, echo=settings.database_echo)
+            logger.info("✅ Database reconnected successfully")
+            break
+        except Exception as e:
+            logger.warning(f"⚠️ Database reconnection attempt failed: {e}")
+
+
+async def _retry_qdrant_connection(settings) -> None:
+    """Background task to retry Qdrant connection."""
+    while True:
+        await asyncio.sleep(30)
+        try:
+            await init_qdrant(
+                host=settings.qdrant_host,
+                port=settings.qdrant_port,
+                api_key=settings.qdrant_api_key,
+            )
+            logger.info("✅ Qdrant reconnected successfully")
+            break
+        except Exception as e:
+            logger.warning(f"⚠️ Qdrant reconnection attempt failed: {e}")
+
+
+async def _retry_minio_connection(settings) -> None:
+    """Background task to retry MinIO connection."""
+    while True:
+        await asyncio.sleep(30)
+        try:
+            await init_minio(
+                endpoint=settings.minio_endpoint,
+                access_key=settings.minio_access_key,
+                secret_key=settings.minio_secret_key,
+                secure=settings.minio_secure,
+            )
+            logger.info("✅ MinIO reconnected successfully")
+            break
+        except Exception as e:
+            logger.warning(f"⚠️ MinIO reconnection attempt failed: {e}")
+
+
+async def _retry_nats_connection(settings) -> None:
+    """Background task to retry NATS connection."""
+    while True:
+        await asyncio.sleep(30)
+        try:
+            await init_nats_publisher(
+                servers=[settings.nats_url],
+                user=settings.nats_user,
+                password=settings.nats_password,
+            )
+            logger.info("✅ NATS publisher reconnected successfully")
+            break
+        except Exception as e:
+            logger.warning(f"⚠️ NATS reconnection attempt failed: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
@@ -146,48 +212,112 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Initializes and closes all service connections.
     """
     settings = get_settings()
+    retry_tasks = []
     
-    # Initialize services
-    await init_db(settings.database_url, echo=settings.database_echo)
-    await init_redis(
-        host=settings.redis_host,
-        port=settings.redis_port,
-        password=settings.redis_password,
-    )
-    await init_qdrant(
-        host=settings.qdrant_host,
-        port=settings.qdrant_port,
-        api_key=settings.qdrant_api_key,
-    )
-    await init_minio(
-        endpoint=settings.minio_endpoint,
-        access_key=settings.minio_access_key,
-        secret_key=settings.minio_secret_key,
-        secure=settings.minio_secure,
-    )
-    init_jwt_validator(
-        issuer=settings.auth_issuer,
-        audience=settings.auth_audience,
-        jwks_url=settings.auth_jwks_url,
-        secret=settings.auth_secret,
-    )
-    await init_nats_publisher(
-        servers=[settings.nats_url],
-        user=settings.nats_user,
-        password=settings.nats_password,
-    )
+    # Initialize services - non-blocking, app starts even if services unavailable
+    try:
+        await init_db(settings.database_url, echo=settings.database_echo)
+        logger.info("✅ Database connected successfully")
+    except Exception as e:
+        logger.warning(f"⚠️ Database initialization failed: {e}")
+        logger.info("🔄 Will retry database connection in background...")
+        retry_tasks.append(asyncio.create_task(_retry_db_connection(settings)))
+    
+    # Redis disabled for now
+    # try:
+    #     await init_redis(
+    #         host=settings.redis_host,
+    #         port=settings.redis_port,
+    #         password=settings.redis_password,
+    #     )
+    #     logger.info("✅ Redis connected successfully")
+    # except Exception as e:
+    #     logger.warning(f"⚠️ Redis initialization failed: {e}")
+    #     logger.info("🔄 Will retry Redis connection in background...")
+    
+    try:
+        await init_qdrant(
+            host=settings.qdrant_host,
+            port=settings.qdrant_port,
+            api_key=settings.qdrant_api_key,
+        )
+        logger.info("✅ Qdrant connected successfully")
+    except Exception as e:
+        logger.warning(f"⚠️ Qdrant initialization failed: {e}")
+        logger.info("🔄 Will retry Qdrant connection in background...")
+        retry_tasks.append(asyncio.create_task(_retry_qdrant_connection(settings)))
+    
+    try:
+        await init_minio(
+            endpoint=settings.minio_endpoint,
+            access_key=settings.minio_access_key,
+            secret_key=settings.minio_secret_key,
+            secure=settings.minio_secure,
+        )
+        logger.info("✅ MinIO connected successfully")
+    except Exception as e:
+        logger.warning(f"⚠️ MinIO initialization failed: {e}")
+        logger.info("🔄 Will retry MinIO connection in background...")
+        retry_tasks.append(asyncio.create_task(_retry_minio_connection(settings)))
+    
+    try:
+        init_jwt_validator(
+            issuer=settings.auth_issuer,
+            audience=settings.auth_audience,
+            jwks_url=settings.auth_jwks_url,
+            secret=settings.auth_secret,
+        )
+        logger.info("✅ JWT validator initialized successfully")
+    except Exception as e:
+        logger.warning(f"⚠️ JWT validator initialization failed: {e}")
+    
+    try:
+        await init_nats_publisher(
+            servers=[settings.nats_url],
+            user=settings.nats_user,
+            password=settings.nats_password,
+        )
+        logger.info("✅ NATS publisher connected successfully")
+    except Exception as e:
+        logger.warning(f"⚠️ NATS publisher initialization failed: {e}")
+        logger.info("🔄 Will retry NATS connection in background...")
+        retry_tasks.append(asyncio.create_task(_retry_nats_connection(settings)))
     
     # Register health checks for readiness probe
     _register_health_checks(settings.health_check_timeout)
     
     yield
     
+    # Cancel all retry tasks
+    for task in retry_tasks:
+        task.cancel()
+    
     # Cleanup
-    await close_db()
-    await close_redis()
-    await close_qdrant()
-    close_minio()
-    await close_nats_publisher()
+    try:
+        await close_db()
+    except Exception:
+        pass
+    
+    # Redis disabled
+    # try:
+    #     await close_redis()
+    # except Exception:
+    #     pass
+    
+    try:
+        await close_qdrant()
+    except Exception:
+        pass
+    
+    try:
+        close_minio()
+    except Exception:
+        pass
+    
+    try:
+        await close_nats_publisher()
+    except Exception:
+        pass
 
 
 def create_app() -> FastAPI:
@@ -217,7 +347,8 @@ def create_app() -> FastAPI:
     )
     
     # Register routers
-    app.include_router(health.router, prefix="/api/v1", tags=["Health"])
+    app.include_router(health.router, tags=["Health"])  # Root level for /health
+    app.include_router(health.router, prefix="/api/v1", tags=["Health"])  # Versioned API
     app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
     app.include_router(assistants.router, prefix="/api/v1/assistants", tags=["Assistants"])
     app.include_router(llms.router, prefix="/api/v1/llms", tags=["LLMs"])

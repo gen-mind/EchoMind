@@ -7,11 +7,29 @@
 """
 
 import datetime
-from .common_model import PaginationRequest, PaginationResponse
+from ..common_model import PaginationRequest, PaginationResponse
 from google.protobuf import message as _message, message_factory
 from protobuf_pydantic_gen.ext import model2protobuf, pool, protobuf2model
 from pydantic import BaseModel, ConfigDict, Field as _Field
 from typing import Dict, List, Optional, Type
+
+
+class UserPreferences(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    default_assistant_id: Optional[int] = _Field(default=0)
+    theme: Optional[str] = _Field(default="")
+    custom: Optional[Dict[str, str]] = _Field(default=None)
+
+    def to_protobuf(self) -> _message.Message:
+        """Convert Pydantic model to protobuf message"""
+        _proto = pool.FindMessageTypeByName("echomind.public.UserPreferences")
+        _cls: Type[_message.Message] = message_factory.GetMessageClass(_proto)
+        return model2protobuf(self, _cls())
+
+    @classmethod
+    def from_protobuf(cls, src: _message.Message) -> "UserPreferences":
+        """Convert protobuf message to Pydantic model"""
+        return protobuf2model(cls, src)
 
 
 class User(BaseModel):
@@ -37,24 +55,6 @@ class User(BaseModel):
 
     @classmethod
     def from_protobuf(cls, src: _message.Message) -> "User":
-        """Convert protobuf message to Pydantic model"""
-        return protobuf2model(cls, src)
-
-
-class UserPreferences(BaseModel):
-    model_config = ConfigDict(protected_namespaces=())
-    default_assistant_id: Optional[int] = _Field(default=0)
-    theme: Optional[str] = _Field(default="")
-    custom: Optional[Dict[str, str]] = _Field(default=None)
-
-    def to_protobuf(self) -> _message.Message:
-        """Convert Pydantic model to protobuf message"""
-        _proto = pool.FindMessageTypeByName("echomind.public.UserPreferences")
-        _cls: Type[_message.Message] = message_factory.GetMessageClass(_proto)
-        return model2protobuf(self, _cls())
-
-    @classmethod
-    def from_protobuf(cls, src: _message.Message) -> "UserPreferences":
         """Convert protobuf message to Pydantic model"""
         return protobuf2model(cls, src)
 

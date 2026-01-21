@@ -7,12 +7,12 @@
 """
 
 import datetime
-from .common_model import PaginationRequest, PaginationResponse
+from ..common_model import PaginationRequest, PaginationResponse
 from enum import Enum as _Enum
 from google.protobuf import message as _message, message_factory
 from protobuf_pydantic_gen.ext import model2protobuf, pool, protobuf2model
 from pydantic import BaseModel, ConfigDict, Field as _Field
-from typing import List, Optional, Type
+from typing import Any, Dict, List, Optional, Type
 
 
 class ConnectorType(_Enum):
@@ -45,8 +45,8 @@ class Connector(BaseModel):
     id: Optional[int] = _Field(default=0)
     name: Optional[str] = _Field(default="")
     type: Optional[ConnectorType] = _Field(default=ConnectorType(0))
-    config: Optional[Struct] = _Field(default=None)
-    state: Optional[Struct] = _Field(default=None)
+    config: Optional[Dict[str, Any]] = _Field(default=None)
+    state: Optional[Dict[str, Any]] = _Field(default=None)
     refresh_freq_minutes: Optional[int] = _Field(default=0)
     user_id: Optional[int] = _Field(default=0)
     scope: Optional[ConnectorScope] = _Field(default=ConnectorScope(0))
@@ -74,7 +74,7 @@ class CreateConnectorRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     name: Optional[str] = _Field(default="")
     type: Optional[ConnectorType] = _Field(default=ConnectorType(0))
-    config: Optional[Struct] = _Field(default=None)
+    config: Optional[Dict[str, Any]] = _Field(default=None)
     refresh_freq_minutes: Optional[int] = _Field(default=0)
     scope: Optional[ConnectorScope] = _Field(default=ConnectorScope(0))
     scope_id: Optional[str] = _Field(default="")
@@ -95,7 +95,7 @@ class UpdateConnectorRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     id: Optional[int] = _Field(default=0)
     name: Optional[str] = _Field(default="")
-    config: Optional[Struct] = _Field(default=None)
+    config: Optional[Dict[str, Any]] = _Field(default=None)
     refresh_freq_minutes: Optional[int] = _Field(default=0)
     scope: Optional[ConnectorScope] = _Field(default=ConnectorScope(0))
     scope_id: Optional[str] = _Field(default="")

@@ -34,6 +34,42 @@ EchoMind uses **single-tenant architecture** with per-user/group/org vector coll
 
 ---
 
+## Mandatory Approved Patterns
+
+### Clean Logging with Emoji Indicators (REQUIRED)
+
+**ALL services MUST use emoji-enhanced logging for visual clarity:**
+
+```python
+# Suppress noisy third-party library errors
+logging.getLogger('nats.aio.client').setLevel(logging.CRITICAL)
+logging.getLogger('nats.aio.transport').setLevel(logging.CRITICAL)
+
+# Use emojis consistently
+logger.info("✅ Service connected successfully")
+logger.warning("⚠️ Connection failed, retrying...")
+logger.info("🔄 Will retry in background...")
+logger.error("❌ Operation failed: %s", error)
+```
+
+**Standard Emoji Conventions:**
+| Emoji | Meaning | Usage |
+|-------|---------|-------|
+| ✅ | Success | Service connections, successful operations |
+| ⚠️ | Warning | Retries, recoverable errors, degraded state |
+| ❌ | Error | Failed operations, exceptions |
+| 🔄 | Processing | Background tasks, retry loops |
+| 🛠️ | Starting | Service initialization |
+| 🔌 | Connected | Network connections established |
+
+**Rules:**
+1. **Suppress noisy third-party logs** - Set external library loggers to CRITICAL level
+2. **Clean output only** - No stack traces from libraries unless critical
+3. **Emoji prefix all operational logs** - Makes scanning logs instant
+4. **Consistent emoji usage** - Follow the standard conventions above
+
+---
+
 ## Critical Rules
 
 ### 1. Shared Library - `echomind_lib`

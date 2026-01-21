@@ -49,6 +49,23 @@ class PaginationResponse(BaseModel):
         return protobuf2model(cls, src)
 
 
+class FieldError(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    field: Optional[str] = _Field(default="")
+    message: Optional[str] = _Field(default="")
+
+    def to_protobuf(self) -> _message.Message:
+        """Convert Pydantic model to protobuf message"""
+        _proto = pool.FindMessageTypeByName("echomind.common.FieldError")
+        _cls: Type[_message.Message] = message_factory.GetMessageClass(_proto)
+        return model2protobuf(self, _cls())
+
+    @classmethod
+    def from_protobuf(cls, src: _message.Message) -> "FieldError":
+        """Convert protobuf message to Pydantic model"""
+        return protobuf2model(cls, src)
+
+
 class ErrorResponse(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     code: Optional[str] = _Field(default="")
@@ -63,23 +80,6 @@ class ErrorResponse(BaseModel):
 
     @classmethod
     def from_protobuf(cls, src: _message.Message) -> "ErrorResponse":
-        """Convert protobuf message to Pydantic model"""
-        return protobuf2model(cls, src)
-
-
-class FieldError(BaseModel):
-    model_config = ConfigDict(protected_namespaces=())
-    field: Optional[str] = _Field(default="")
-    message: Optional[str] = _Field(default="")
-
-    def to_protobuf(self) -> _message.Message:
-        """Convert Pydantic model to protobuf message"""
-        _proto = pool.FindMessageTypeByName("echomind.common.FieldError")
-        _cls: Type[_message.Message] = message_factory.GetMessageClass(_proto)
-        return model2protobuf(self, _cls())
-
-    @classmethod
-    def from_protobuf(cls, src: _message.Message) -> "FieldError":
         """Convert protobuf message to Pydantic model"""
         return protobuf2model(cls, src)
 

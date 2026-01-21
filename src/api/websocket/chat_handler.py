@@ -12,7 +12,6 @@ from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from api.middleware.rate_limit import WebSocketRateLimiter
 from api.websocket.manager import ConnectionManager, get_connection_manager
 from echomind_lib.helpers.auth import TokenUser, extract_bearer_token, get_jwt_validator
 
@@ -48,17 +47,14 @@ class ChatHandler:
     def __init__(
         self,
         manager: ConnectionManager | None = None,
-        rate_limiter: WebSocketRateLimiter | None = None,
     ):
         """
         Initialize chat handler.
         
         Args:
             manager: Connection manager (uses global if not provided)
-            rate_limiter: Rate limiter (creates default if not provided)
         """
         self._manager = manager
-        self._rate_limiter = rate_limiter or WebSocketRateLimiter()
         self._active_generations: dict[int, asyncio.Task] = {}
     
     @property
@@ -139,15 +135,6 @@ class ChatHandler:
                 user.id,
                 "INVALID_REQUEST",
                 "session_id and query are required",
-            )
-            return
-        
-        # Check rate limit
-        if not await self._rate_limiter.check(user.id):
-            await self._send_error(
-                user.id,
-                "RATE_LIMITED",
-                "Too many messages. Please slow down.",
             )
             return
         

@@ -41,12 +41,18 @@ class JetStreamPublisher:
         self._nc: nats.NATS | None = None
         self._js: JetStreamContext | None = None
     
-    async def init(self) -> None:
+    async def init(self, timeout: float = 5.0) -> None:
         """Connect to NATS and initialize JetStream context."""
-        self._nc = await nats.connect(
-            servers=self._servers,
-            user=self._user,
-            password=self._password,
+        import asyncio
+        self._nc = await asyncio.wait_for(
+            nats.connect(
+                servers=self._servers,
+                user=self._user,
+                password=self._password,
+                connect_timeout=timeout,
+                max_reconnect_attempts=0,
+            ),
+            timeout=timeout,
         )
         self._js = self._nc.jetstream()
     
@@ -125,11 +131,12 @@ async def init_nats_publisher(
     servers: list[str] | None = None,
     user: str | None = None,
     password: str | None = None,
+    timeout: float = 5.0,
 ) -> JetStreamPublisher:
     """Initialize the global NATS publisher."""
     global _nats_publisher
     _nats_publisher = JetStreamPublisher(servers=servers, user=user, password=password)
-    await _nats_publisher.init()
+    await _nats_publisher.init(timeout=timeout)
     return _nats_publisher
 
 
