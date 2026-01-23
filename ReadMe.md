@@ -26,7 +26,7 @@ EchoMind is an **agentic RAG platform** that actually *thinks* before it retriev
 🔄 Think → Act → Observe → Reflect → Evaluate → Answer
 ```
 
-> The agent 🤔 **thinks** about what information it needs, 🎯 **acts** by querying sources and tools, 🔍 **observes** the results, and 🤖 **reflects** on whether it has enough context. Before responding, it ⚖️ **evaluates** the quality and completeness of its answer — looping back if needed — then delivers a grounded 💬 **answer**.
+> The agent 🤔 **thinks** about what information it needs, 👷‍♂️ **acts** by querying sources and tools, 🔍 **observes** the results, and 🤖 **reflects** on whether it has enough context. Before responding, it ⚖️ **evaluates** the quality and completeness of its answer — looping back if needed — then delivers a grounded 💬 **answer**.
 
 |                                   |                                                                             |
 |-----------------------------------|-----------------------------------------------------------------------------|
