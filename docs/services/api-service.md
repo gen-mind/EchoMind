@@ -221,6 +221,57 @@ GET /healthz
 
 ---
 
+## Unit Testing (MANDATORY)
+
+All service logic MUST have unit tests. See [Testing Standards](../../.claude/rules/testing.md).
+
+### Test Location
+
+```
+tests/unit/services/
+├── test_user_service.py
+├── test_assistant_service.py
+├── test_connector_service.py
+├── test_chat_service.py
+└── ...
+```
+
+### What to Test
+
+| Component | Test Coverage |
+|-----------|---------------|
+| Service classes | All public methods |
+| Exception handling | NotFoundError, ValidationError, etc. |
+| Business logic | Validation, transformations |
+
+### Example
+
+```python
+# tests/unit/services/test_user_service.py
+class TestUserService:
+    @pytest.fixture
+    def mock_db(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def service(self, mock_db):
+        return UserService(mock_db)
+
+    @pytest.mark.asyncio
+    async def test_get_user_by_id_not_found(self, service, mock_db):
+        mock_db.execute.return_value.scalar_one_or_none.return_value = None
+
+        with pytest.raises(NotFoundError):
+            await service.get_user_by_id(999)
+```
+
+### Minimum Coverage
+
+- **70%** for service classes
+- **80%** for utility functions
+
+---
+
 ## References
 
 - [API Specification](../api-spec.md) - Full endpoint documentation

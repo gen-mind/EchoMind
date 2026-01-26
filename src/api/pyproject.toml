@@ -44,5 +44,24 @@ disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["../../tests"]
-addopts = "-v --cov=api --cov-report=term-missing"
+addopts = "-v --strict-markers"
+markers = [
+    "unit: Pure unit tests (no I/O, mocked dependencies)",
+    "integration: Integration tests (requires DB/HTTP)",
+    "slow: Tests that take > 1s",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["api"]
+omit = ["*/tests/*", "*/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+fail_under = 70

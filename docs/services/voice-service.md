@@ -298,6 +298,73 @@ Future enhancement: real-time voice streaming
 
 ---
 
+## Unit Testing (MANDATORY)
+
+All service logic MUST have unit tests. See [Testing Standards](../../.claude/rules/testing.md).
+
+### Test Location
+
+```
+tests/unit/voice/
+├── test_voice_service.py
+├── test_whisper_transcriber.py
+└── test_downloader.py
+```
+
+### What to Test
+
+| Component | Test Coverage |
+|-----------|---------------|
+| VoiceService | Event handling, error handling |
+| WhisperTranscriber | Transcription result parsing |
+| Downloader | MinIO download logic |
+
+### Example
+
+```python
+# tests/unit/voice/test_whisper_transcriber.py
+class TestWhisperTranscriber:
+    @pytest.fixture
+    def mock_model(self):
+        model = MagicMock()
+        model.transcribe.return_value = {
+            "text": "Hello world",
+            "language": "en",
+            "duration": 2.5,
+            "segments": []
+        }
+        return model
+
+    @pytest.mark.asyncio
+    async def test_transcribe_returns_text(self, mock_model):
+        with patch("whisper.load_model", return_value=mock_model):
+            transcriber = WhisperTranscriber(model_name="base")
+            result = await transcriber.transcribe("/path/to/audio.mp3")
+
+        assert result.text == "Hello world"
+        assert result.language == "en"
+
+    @pytest.mark.asyncio
+    async def test_transcribe_with_language_hint(self, mock_model):
+        with patch("whisper.load_model", return_value=mock_model):
+            transcriber = WhisperTranscriber(model_name="base")
+            await transcriber.transcribe("/path/to/audio.mp3", language="es")
+
+        mock_model.transcribe.assert_called_with(
+            "/path/to/audio.mp3",
+            language="es",
+            task="transcribe",
+            verbose=False
+        )
+```
+
+### Minimum Coverage
+
+- **70%** for service classes
+- **80%** for transcription logic
+
+---
+
 ## References
 
 - [NATS Messaging](../nats-messaging.md) - Message flow documentation

@@ -36,8 +36,9 @@ EchoMind is a **Python-only Agentic RAG** platform with multi-step retrieval, to
 
 1. **Import from `echomind_lib`** - Never duplicate code across services
 2. **Proto = Source of Truth** - Never hand-write Pydantic models. Regenerate: `make gen-proto`
-3. **Never edit generated code** in `echomind_lib/models/` or `src/web/src/models/`
+3. **Never edit generated code** in `echomind_lib/models/` or `web/src/models/`
 4. **Emoji logging required** - See `.claude/rules/logging.md`
+5. **Unit tests MANDATORY** - All services and web components MUST have unit tests. See `.claude/rules/testing.md`
 
 ---
 
@@ -281,12 +282,16 @@ Video (MP4)     → vision → frame extraction → BLIP → description → sem
 
 ---
 
-## Code Quality
+## Code Quality & Testing
 
 - **TODO comments** for incomplete code
 - **No unused code** - imports, functions, dependencies
-- **Unit tests required** for new code
-- See `.claude/rules/testing.md`
+- **Unit tests REQUIRED** for all new code:
+  - Python services: `tests/unit/{service}/test_*.py`
+  - Web components: `web/src/**/*.test.ts(x)`
+  - Mock all external dependencies (DB, APIs, queues)
+  - Minimum coverage: 70% services, 80% utilities
+- See `.claude/rules/testing.md` for patterns and examples
 
 ---
 

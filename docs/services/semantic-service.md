@@ -366,6 +366,73 @@ GET :8080/healthz
 
 ---
 
+## Unit Testing (MANDATORY)
+
+All service logic MUST have unit tests. See [Testing Standards](../../.claude/rules/testing.md).
+
+### Test Location
+
+```
+tests/unit/semantic/
+├── test_semantic_service.py
+├── test_extractors/
+│   ├── test_pdf_extractor.py
+│   ├── test_url_extractor.py
+│   └── test_youtube_extractor.py
+├── test_chunkers/
+│   ├── test_character_chunker.py
+│   └── test_semantic_chunker.py
+└── test_router.py
+```
+
+### What to Test
+
+| Component | Test Coverage |
+|-----------|---------------|
+| SemanticService | Event handling, routing |
+| PDFExtractor | Text extraction from PDF |
+| URLExtractor | HTML parsing, JS detection |
+| YouTubeExtractor | Video ID parsing, transcript fetch |
+| CharacterChunker | Chunk size, overlap |
+| ContentRouter | MIME type routing |
+
+### Example
+
+```python
+# tests/unit/semantic/test_extractors/test_pdf_extractor.py
+class TestPDFExtractor:
+    @pytest.fixture
+    def extractor(self):
+        return PDFExtractor()
+
+    @pytest.mark.asyncio
+    async def test_extracts_text_from_pdf(self, extractor, tmp_path):
+        pdf_path = tmp_path / "test.pdf"
+        create_test_pdf(pdf_path, "Hello World")
+
+        text = await extractor.extract(str(pdf_path))
+
+        assert "Hello World" in text
+
+# tests/unit/semantic/test_chunkers/test_character_chunker.py
+class TestCharacterChunker:
+    def test_splits_text_into_chunks(self):
+        chunker = CharacterChunker(chunk_size=100, overlap=20)
+        text = "A" * 250
+
+        chunks = chunker.split(text)
+
+        assert len(chunks) == 3
+        assert all(len(c) <= 100 for c in chunks)
+```
+
+### Minimum Coverage
+
+- **70%** for service classes
+- **80%** for extractors and chunkers
+
+---
+
 ## References
 
 - [NATS Messaging](../nats-messaging.md) - Message flow documentation

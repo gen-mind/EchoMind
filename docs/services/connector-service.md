@@ -305,6 +305,62 @@ GET :8080/healthz
 
 ---
 
+## Unit Testing (MANDATORY)
+
+All service logic MUST have unit tests. See [Testing Standards](../../.claude/rules/testing.md).
+
+### Test Location
+
+```
+tests/unit/connector/
+├── test_connector_service.py
+├── test_providers/
+│   ├── test_teams_provider.py
+│   ├── test_onedrive_provider.py
+│   └── test_google_drive_provider.py
+└── test_downloader.py
+```
+
+### What to Test
+
+| Component | Test Coverage |
+|-----------|---------------|
+| ConnectorService | Event handling, routing |
+| TeamsProvider | Delta sync, message parsing |
+| OneDriveProvider | File listing, delta tokens |
+| GoogleDriveProvider | Query building, pagination |
+| Downloader | MinIO upload logic |
+
+### Example
+
+```python
+# tests/unit/connector/test_providers/test_google_drive_provider.py
+class TestGoogleDriveProvider:
+    @pytest.fixture
+    def mock_drive_client(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def provider(self, mock_drive_client):
+        return GoogleDriveProvider(mock_drive_client)
+
+    @pytest.mark.asyncio
+    async def test_sync_returns_files_from_folder(self, provider, mock_drive_client):
+        mock_drive_client.list_files.return_value = [mock_file("doc.pdf")]
+
+        files = [f async for f in provider.sync({"folder_id": "123"}, {})]
+
+        assert len(files) == 1
+        assert files[0].title == "doc.pdf"
+```
+
+### Minimum Coverage
+
+- **70%** for service classes
+- **80%** for provider logic
+
+---
+
 ## References
 
 - [NATS Messaging](../nats-messaging.md) - Message flow documentation

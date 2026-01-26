@@ -409,6 +409,62 @@ nats-py = "^2.0"     # Already in echomind_lib
 
 ---
 
+## Unit Testing (MANDATORY)
+
+All service logic MUST have unit tests. See [Testing Standards](../../.claude/rules/testing.md).
+
+### Test Location
+
+```
+tests/unit/orchestrator/
+├── test_scheduler_service.py
+├── test_job_manager.py
+└── test_sync_trigger.py
+```
+
+### What to Test
+
+| Component | Test Coverage |
+|-----------|---------------|
+| SchedulerService | Job scheduling, connector queries |
+| JobManager | Job creation, removal, updates |
+| SyncTrigger | NATS message publishing |
+
+### Example
+
+```python
+# tests/unit/orchestrator/test_scheduler_service.py
+class TestSchedulerService:
+    @pytest.fixture
+    def mock_db(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def mock_nats(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def service(self, mock_db, mock_nats):
+        return SchedulerService(mock_db, mock_nats)
+
+    @pytest.mark.asyncio
+    async def test_triggers_sync_for_due_connectors(self, service, mock_db, mock_nats):
+        mock_db.execute.return_value.scalars.return_value.all.return_value = [
+            mock_connector(id=1, type="google_drive")
+        ]
+
+        await service.check_and_trigger_syncs()
+
+        mock_nats.publish.assert_called_once()
+```
+
+### Minimum Coverage
+
+- **70%** for service classes
+- **80%** for scheduling logic
+
+---
+
 ## References
 
 - [APScheduler Documentation](https://apscheduler.readthedocs.io/)

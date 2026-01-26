@@ -1,3 +1,0 @@
-"""
-EchoMind test suite.
-"""

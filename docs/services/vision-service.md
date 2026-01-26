@@ -399,6 +399,87 @@ This combined text is stored in the document's `content` field and sent to Seman
 
 ---
 
+## Unit Testing (MANDATORY)
+
+All service logic MUST have unit tests. See [Testing Standards](../../.claude/rules/testing.md).
+
+### Test Location
+
+```
+tests/unit/vision/
+├── test_vision_service.py
+├── test_blip_captioner.py
+├── test_ocr_engine.py
+├── test_video_processor.py
+└── test_downloader.py
+```
+
+### What to Test
+
+| Component | Test Coverage |
+|-----------|---------------|
+| VisionService | Event handling, output formatting |
+| BLIPCaptioner | Caption generation |
+| OCREngine | Text extraction, confidence filtering |
+| VideoProcessor | Keyframe extraction |
+| Downloader | MinIO download logic |
+
+### Example
+
+```python
+# tests/unit/vision/test_blip_captioner.py
+class TestBLIPCaptioner:
+    @pytest.fixture
+    def mock_model(self):
+        model = MagicMock()
+        model.generate.return_value = torch.tensor([[1, 2, 3]])
+        return model
+
+    @pytest.fixture
+    def mock_processor(self):
+        processor = MagicMock()
+        processor.decode.return_value = "A cat sitting on a couch"
+        return processor
+
+    @pytest.mark.asyncio
+    async def test_caption_returns_description(self, mock_model, mock_processor):
+        with patch("transformers.BlipForConditionalGeneration.from_pretrained", return_value=mock_model):
+            with patch("transformers.BlipProcessor.from_pretrained", return_value=mock_processor):
+                captioner = BLIPCaptioner()
+                result = await captioner.caption("/path/to/image.jpg")
+
+        assert "cat" in result.lower()
+
+# tests/unit/vision/test_ocr_engine.py
+class TestOCREngine:
+    @pytest.fixture
+    def mock_reader(self):
+        reader = MagicMock()
+        reader.readtext.return_value = [
+            ([], "Hello", 0.95),
+            ([], "World", 0.85),
+            ([], "noise", 0.3),  # Low confidence, should be filtered
+        ]
+        return reader
+
+    @pytest.mark.asyncio
+    async def test_extract_text_filters_low_confidence(self, mock_reader):
+        with patch("easyocr.Reader", return_value=mock_reader):
+            engine = OCREngine(languages=["en"])
+            text = await engine.extract_text("/path/to/image.jpg")
+
+        assert "Hello" in text
+        assert "World" in text
+        assert "noise" not in text
+```
+
+### Minimum Coverage
+
+- **70%** for service classes
+- **80%** for captioner and OCR logic
+
+---
+
 ## References
 
 - [NATS Messaging](../nats-messaging.md) - Message flow documentation

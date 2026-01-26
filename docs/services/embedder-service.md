@@ -315,6 +315,62 @@ GET :8080/healthz
 
 ---
 
+## Unit Testing (MANDATORY)
+
+All service logic MUST have unit tests. See [Testing Standards](../../.claude/rules/testing.md).
+
+### Test Location
+
+```
+tests/unit/embedder/
+├── test_embed_servicer.py
+├── test_sentence_encoder.py
+└── test_qdrant_writer.py
+```
+
+### What to Test
+
+| Component | Test Coverage |
+|-----------|---------------|
+| EmbedServicer | gRPC request handling |
+| SentenceEncoder | Model caching, batch encoding |
+| QdrantWriter | Point creation, batch upsert |
+
+### Example
+
+```python
+# tests/unit/embedder/test_sentence_encoder.py
+class TestSentenceEncoder:
+    @pytest.fixture
+    def mock_model(self):
+        model = MagicMock()
+        model.encode.return_value = [np.array([0.1, 0.2, 0.3])]
+        return model
+
+    def test_embed_batch_returns_list_of_floats(self, mock_model):
+        with patch("sentence_transformers.SentenceTransformer", return_value=mock_model):
+            result = SentenceEncoder.embed_batch(["hello"], "model-name")
+
+        assert len(result) == 1
+        assert isinstance(result[0], list)
+        assert all(isinstance(x, float) for x in result[0])
+
+    def test_caches_model_after_first_load(self, mock_model):
+        with patch("sentence_transformers.SentenceTransformer", return_value=mock_model) as mock_ctor:
+            SentenceEncoder.embed_batch(["a"], "cached-model")
+            SentenceEncoder.embed_batch(["b"], "cached-model")
+
+        # Model constructor called only once
+        assert mock_ctor.call_count == 1
+```
+
+### Minimum Coverage
+
+- **70%** for service classes
+- **80%** for encoder logic
+
+---
+
 ## References
 
 - [Proto Definitions](../proto-definitions.md) - Message schemas

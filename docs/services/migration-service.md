@@ -477,6 +477,68 @@ This service is a batch job and does not expose health endpoints. Success/failur
 
 ---
 
+## Unit Testing (MANDATORY)
+
+All service logic MUST have unit tests. See [Testing Standards](../../.claude/rules/testing.md).
+
+### Test Location
+
+```
+tests/unit/migration/
+├── test_migration_runner.py
+└── test_db_connection.py
+```
+
+### What to Test
+
+| Component | Test Coverage |
+|-----------|---------------|
+| wait_for_db | Retry logic, timeout handling |
+| run_migrations | Success/failure paths |
+
+### Example
+
+```python
+# tests/unit/migration/test_migration_runner.py
+class TestWaitForDb:
+    @pytest.fixture
+    def mock_engine(self):
+        return MagicMock()
+
+    def test_returns_true_when_db_ready(self, mock_engine):
+        with patch("sqlalchemy.create_engine", return_value=mock_engine):
+            mock_engine.connect.return_value.__enter__ = MagicMock()
+            mock_engine.connect.return_value.__exit__ = MagicMock()
+
+            result = wait_for_db("postgresql://test", retries=1)
+
+        assert result is True
+
+    def test_returns_false_after_max_retries(self, mock_engine):
+        with patch("sqlalchemy.create_engine", return_value=mock_engine):
+            mock_engine.connect.side_effect = OperationalError("", "", "")
+
+            with patch("time.sleep"):  # Skip actual sleep
+                result = wait_for_db("postgresql://test", retries=2, delay=0)
+
+        assert result is False
+
+class TestRunMigrations:
+    def test_exits_when_database_url_not_set(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(SystemExit) as exc_info:
+                run_migrations()
+
+        assert exc_info.value.code == 1
+```
+
+### Minimum Coverage
+
+- **70%** for runner logic
+- **80%** for retry/connection handling
+
+---
+
 ## References
 
 - [DB Schema](../db-schema.md) - Database schema documentation

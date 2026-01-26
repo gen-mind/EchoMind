@@ -348,6 +348,61 @@ The reranker may become a separate service (`echomind-reranker`) if:
 
 ---
 
+## Unit Testing (MANDATORY)
+
+All service logic MUST have unit tests. See [Testing Standards](../../.claude/rules/testing.md).
+
+### Test Location
+
+```
+tests/unit/search/
+├── test_search_service.py
+├── test_retriever.py
+├── test_reranker.py
+├── test_memory_manager.py
+└── test_tools.py
+```
+
+### What to Test
+
+| Component | Test Coverage |
+|-----------|---------------|
+| SearchService | Query processing, tool routing |
+| Retriever | Vector search logic |
+| Reranker | Scoring, ranking logic |
+| MemoryManager | Context loading, updates |
+| Tools | Calculator, date_time, etc. |
+
+### Example
+
+```python
+# tests/unit/search/test_retriever.py
+class TestRetriever:
+    @pytest.fixture
+    def mock_qdrant(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def retriever(self, mock_qdrant):
+        return Retriever(mock_qdrant)
+
+    @pytest.mark.asyncio
+    async def test_search_returns_top_k_results(self, retriever, mock_qdrant):
+        mock_qdrant.search.return_value = [mock_hit(0.9), mock_hit(0.8)]
+
+        results = await retriever.search("query", top_k=2)
+
+        assert len(results) == 2
+        mock_qdrant.search.assert_called_once()
+```
+
+### Minimum Coverage
+
+- **70%** for service classes
+- **80%** for retrieval/reranking logic
+
+---
+
 ## References
 
 - [Architecture](../architecture.md) - System overview
