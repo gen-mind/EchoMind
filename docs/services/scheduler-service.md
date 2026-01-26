@@ -18,7 +18,7 @@ The Scheduler Service is a **lightweight trigger service** that monitors the dat
 **What it does NOT do:**
 - Fetch data from external sources
 - Process documents
-- Update status to `WORKING`, `COMPLETED`, or `ERROR` (other services do this)
+- Update status to `SYNCING`, `ACTIVE`, or `ERROR` (other services do this)
 
 ---
 
@@ -34,7 +34,7 @@ flowchart LR
 
     subgraph Connector["Connector/Chunker Service"]
         C1[3. Pick up msg]
-        C2[4. Set WORKING]
+        C2[4. Set SYNCING]
         C3[5. Do work]
         C4[6. Send NATS]
     end
@@ -42,7 +42,7 @@ flowchart LR
     subgraph Semantic["Semantic Service"]
         E1[5. Pick up msg]
         E2[6. Process]
-        E3[7. Set COMPLETED or ERROR]
+        E3[7. Set ACTIVE or ERROR]
     end
 
     Scheduler -->|NATS| Connector
@@ -52,10 +52,9 @@ flowchart LR
 | Action | Responsible Service |
 |--------|---------------------|
 | Set status to `PENDING` | Scheduler |
-| Set status to `WORKING` | Connector/Chunker Service |
-| Set status to `COMPLETED` | Semantic Service |
-| Set status to `COMPLETED_WITH_ERRORS` | Semantic Service |
-| Set status to `ERROR` / retry | Connector/Semantic Service |
+| Set status to `SYNCING` | Connector/Chunker Service |
+| Set status to `ACTIVE` | Semantic Service (on success) |
+| Set status to `ERROR` | Any service (on failure) |
 
 ---
 
@@ -67,47 +66,54 @@ Query the `connectors` table for rows that need sync:
 
 | Field | Purpose |
 |-------|---------|
-| `status` | Only trigger if `COMPLETED`, `COMPLETED_WITH_ERRORS`, or `READY_TO_BE_PROCESSED` |
-| `refresh_freq_minutes` | Interval between syncs |
+| `status` | Trigger if `ACTIVE` (ready) or `ERROR` (can retry). Skip if `PENDING`, `SYNCING`, or `DISABLED` |
+| `refresh_freq_minutes` | Interval between syncs (null = manual only) |
 | `last_sync_at` | Calculate next run time |
 | `type` | Determines routing (Connector vs Chunker) |
 
 ### 2. Refresh Rules by Connector Type
 
-| Connector Type | Default Refresh | Route To |
-|----------------|-----------------|----------|
-| `url` | 7 days | Chunker (direct) |
-| `file` | One-time | Chunker (direct) |
-| `youtube` | One-time | Chunker (direct) |
-| `onedrive` / `gdrive` | 7 days | Connector Service |
-| `teams` / `slack` | 1 day | Connector Service |
+Based on EchoMind's `ConnectorType` enum from `src/proto/public/connector.proto`:
+
+| Connector Type | Default Refresh | Route To | Behavior |
+|----------------|-----------------|----------|----------|
+| `web` | 7 days | Chunker (direct) | Full re-crawl |
+| `file` | One-time | Chunker (direct) | Manual upload, no refresh |
+| `onedrive` | 7 days | Connector Service | Delta sync (changed files) |
+| `google_drive` | 7 days | Connector Service | Delta sync (changed files) |
+| `teams` | 1 day | Connector Service | Incremental (new messages) |
 
 ### 3. Status Flow
+
+Uses EchoMind's `ConnectorStatus` enum from `src/proto/public/connector.proto`:
 
 ```mermaid
 stateDiagram-v2
     direction LR
 
-    READY: READY / COMPLETED
+    ACTIVE: ACTIVE
     PENDING: PENDING
-    WORKING: WORKING
-    COMPLETED: COMPLETED
-    ERRORS: COMPLETED_WITH_ERRORS
+    SYNCING: SYNCING
+    ERROR: ERROR
+    DISABLED: DISABLED
 
-    [*] --> READY
-    READY --> PENDING: Scheduler sets
-    PENDING --> WORKING: Connector/Chunker sets
-    WORKING --> COMPLETED: Semantic Service sets
-    WORKING --> ERRORS: Semantic Service sets
-    COMPLETED --> READY: Ready for next sync
-    ERRORS --> READY: Ready for next sync
+    [*] --> ACTIVE: New connector
+    ACTIVE --> PENDING: Scheduler sets
+    PENDING --> SYNCING: Connector/Chunker sets
+    SYNCING --> ACTIVE: Success (Semantic Service)
+    SYNCING --> ERROR: Failure (any service)
+    ERROR --> PENDING: Retry (Scheduler)
+    ACTIVE --> DISABLED: User disables
 ```
 
+**Statuses that ALLOW scheduling:**
+- `ACTIVE` - Ready for sync (check refresh_freq_minutes + last_sync_at)
+- `ERROR` - Failed, can retry
+
 **Statuses that BLOCK scheduling:**
-- `PENDING` - Already queued
-- `WORKING` - Currently processing
-- `DISABLED` - User disabled
-- `UNABLE_TO_PROCESS` - Permanent failure
+- `PENDING` - Already queued, waiting for worker
+- `SYNCING` - Currently processing
+- `DISABLED` - User disabled connector
 
 ---
 
@@ -126,9 +132,9 @@ flowchart TB
     end
 
     subgraph NATS["NATS JetStream"]
-        URL[connector.sync.url]
+        WEB[connector.sync.web]
         FILE[connector.sync.file]
-        DRIVE[connector.sync.onedrive]
+        DRIVE[connector.sync.onedrive<br/>connector.sync.google_drive]
         TEAMS[connector.sync.teams]
     end
 
@@ -139,9 +145,9 @@ flowchart TB
 
     JOB -->|1. Query eligible connectors| CONN
     JOB -->|2. Set status PENDING| CONN
-    JOB -->|3. Publish| URL & FILE & DRIVE & TEAMS
+    JOB -->|3. Publish| WEB & FILE & DRIVE & TEAMS
 
-    URL --> CHUNKER
+    WEB --> CHUNKER
     FILE --> CHUNKER
     DRIVE --> CONNECTOR
     TEAMS --> CONNECTOR
@@ -156,7 +162,7 @@ flowchart TB
 Runs every minute, checks for connectors due for sync:
 
 ```python
-async def connector_sync_check():
+async def connector_sync_check() -> None:
     """
     Check for connectors that need synchronization.
 
@@ -168,40 +174,50 @@ async def connector_sync_check():
     """
     now = datetime.utcnow()
 
-    # Find connectors eligible for sync
+    # Find connectors eligible for sync:
+    # - Status is ACTIVE (ready) or ERROR (can retry)
+    # - refresh_freq_minutes is set (not manual-only)
+    # - last_sync_at + refresh_freq_minutes <= now
     connectors = await db.execute(
         select(Connector)
-        .where(Connector.status.in_([
-            ConnectorStatus.READY_TO_BE_PROCESSED,
-            ConnectorStatus.COMPLETED,
-            ConnectorStatus.COMPLETED_WITH_ERRORS,
-        ]))
+        .where(Connector.status.in_(["active", "error"]))
+        .where(Connector.refresh_freq_minutes.isnot(None))
         .where(
             or_(
                 Connector.last_sync_at.is_(None),
                 Connector.last_sync_at +
-                    interval(minutes=Connector.refresh_freq_minutes) <= now
+                    func.make_interval(mins=Connector.refresh_freq_minutes) <= now
             )
         )
     )
 
-    for connector in connectors:
+    for connector in connectors.scalars():
         # 1. Update status to PENDING
         await db.execute(
             update(Connector)
             .where(Connector.id == connector.id)
-            .values(status=ConnectorStatus.PENDING)
+            .values(status="pending")
         )
+        await db.commit()
 
-        # 2. Publish NATS message (fire-and-forget)
-        subject = get_subject_for_type(connector.type)  # e.g., "connector.sync.onedrive"
+        # 2. Generate chunking session ID
+        chunking_session = str(uuid.uuid4())
+
+        # 3. Publish NATS message (fire-and-forget)
+        subject = f"connector.sync.{connector.type}"
         await nats.publish(subject, ConnectorSyncRequest(
             connector_id=connector.id,
-            connector_type=connector.type,
+            type=connector.type,
+            user_id=connector.user_id,
+            scope=connector.scope,
+            scope_id=connector.scope_id,
             config=connector.config,
+            state=connector.state,
+            chunking_session=chunking_session,
         ))
 
-        logger.info("📤 Triggered sync for connector %s", connector.id)
+        logger.info("📤 Triggered sync for connector %s (session: %s)",
+                    connector.id, chunking_session)
 ```
 
 ---
@@ -225,27 +241,139 @@ sequenceDiagram
     Note over S: Scheduler done
 
     N->>C: 3. Consume message
-    C->>DB: 4. Set status = WORKING
+    C->>DB: 4. Set status = SYNCING
     C->>C: Do work...
     C->>N: 5. Publish document.process
 
     N->>E: 6. Consume message
     E->>E: Process & embed
-    E->>DB: 7. Set status = COMPLETED
+    E->>DB: 7. Set status = ACTIVE
 ```
 
 ### NATS Subjects
 
 | Subject | Publisher | Consumer | Payload |
 |---------|-----------|----------|---------|
-| `connector.sync.url` | Scheduler | Chunker | `ConnectorSyncRequest` |
+| `connector.sync.web` | Scheduler | Chunker | `ConnectorSyncRequest` |
 | `connector.sync.file` | Scheduler | Chunker | `ConnectorSyncRequest` |
 | `connector.sync.onedrive` | Scheduler | Connector Service | `ConnectorSyncRequest` |
-| `connector.sync.gdrive` | Scheduler | Connector Service | `ConnectorSyncRequest` |
+| `connector.sync.google_drive` | Scheduler | Connector Service | `ConnectorSyncRequest` |
 | `connector.sync.teams` | Scheduler | Connector Service | `ConnectorSyncRequest` |
 | `document.process` | Connector Service | Semantic Service | `DocumentProcessRequest` |
 
 **Note:** The scheduler does NOT subscribe to any subjects. It only publishes.
+
+---
+
+## Proto Messages
+
+The scheduler uses **internal** proto messages for NATS communication. These are defined in `src/proto/internal/scheduler.proto`.
+
+### ConnectorSyncRequest
+
+Message sent by the scheduler to trigger a connector sync.
+
+```protobuf
+// src/proto/internal/scheduler.proto
+
+syntax = "proto3";
+
+package echomind.internal;
+
+option go_package = "echomind/proto/internal";
+
+import "google/protobuf/struct.proto";
+import "public/connector.proto";
+
+// Sent by Scheduler to trigger a connector sync
+message ConnectorSyncRequest {
+    // Connector ID (from connectors table)
+    int32 connector_id = 1;
+
+    // Connector type (reuse from public proto)
+    echomind.public.ConnectorType type = 2;
+
+    // User who owns the connector
+    int32 user_id = 3;
+
+    // Scope for vector collection routing
+    echomind.public.ConnectorScope scope = 4;
+
+    // Group name if scope=GROUP (determines collection: group_{scope_id})
+    optional string scope_id = 5;
+
+    // Connector-specific configuration (credentials, paths, etc.)
+    google.protobuf.Struct config = 6;
+
+    // Sync state (cursors, tokens, pagination state)
+    google.protobuf.Struct state = 7;
+
+    // Session ID for tracking this sync batch (generated by scheduler)
+    string chunking_session = 8;
+}
+```
+
+### Existing Enums (from `public/connector.proto`)
+
+The scheduler reuses enums already defined in EchoMind:
+
+```protobuf
+// ConnectorType - from src/proto/public/connector.proto
+enum ConnectorType {
+    CONNECTOR_TYPE_UNSPECIFIED = 0;
+    CONNECTOR_TYPE_TEAMS = 1;
+    CONNECTOR_TYPE_GOOGLE_DRIVE = 2;
+    CONNECTOR_TYPE_ONEDRIVE = 3;
+    CONNECTOR_TYPE_WEB = 4;
+    CONNECTOR_TYPE_FILE = 5;
+}
+
+// ConnectorStatus - from src/proto/public/connector.proto
+enum ConnectorStatus {
+    CONNECTOR_STATUS_UNSPECIFIED = 0;
+    CONNECTOR_STATUS_PENDING = 1;   // Scheduler sets this
+    CONNECTOR_STATUS_SYNCING = 2;   // Connector/Chunker sets this
+    CONNECTOR_STATUS_ACTIVE = 3;    // Semantic service sets this (success)
+    CONNECTOR_STATUS_ERROR = 4;     // Any service sets this (failure)
+    CONNECTOR_STATUS_DISABLED = 5;  // User disabled
+}
+
+// ConnectorScope - from src/proto/public/connector.proto
+enum ConnectorScope {
+    CONNECTOR_SCOPE_UNSPECIFIED = 0;
+    CONNECTOR_SCOPE_USER = 1;   // Collection: user_{user_id}
+    CONNECTOR_SCOPE_GROUP = 2;  // Collection: group_{scope_id}
+    CONNECTOR_SCOPE_ORG = 3;    // Collection: org
+}
+```
+
+### Collection Name Resolution
+
+The consuming service derives the collection name from scope:
+
+```python
+def get_collection_name(user_id: int, scope: str, scope_id: str | None) -> str:
+    """
+    Derive Qdrant collection name from connector scope.
+
+    Args:
+        user_id: Owner's user ID
+        scope: One of 'user', 'group', 'org'
+        scope_id: Group name if scope is 'group'
+
+    Returns:
+        Collection name for Qdrant
+    """
+    match scope:
+        case "user":
+            return f"user_{user_id}"
+        case "group":
+            return f"group_{scope_id}"
+        case "org":
+            return "org"
+        case _:
+            raise ValueError(f"Invalid scope: {scope}")
+```
 
 ---
 
@@ -406,7 +534,7 @@ nats-py = "^2.0"     # Already in echomind_lib
 ## Open Questions
 
 1. **How to handle stuck connectors?**
-   - If a connector stays in `PENDING` or `WORKING` for too long, should the scheduler reset it?
+   - If a connector stays in `PENDING` or `SYNCING` for too long, should the scheduler reset it?
    - Or should another service (health monitor) handle this?
 
 2. **Manual trigger via API?**

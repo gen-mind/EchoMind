@@ -152,7 +152,7 @@ class ConnectorStatus(str, Enum):
     SYNCING = "syncing"
     ACTIVE = "active"
     ERROR = "error"
-    PAUSED = "paused"
+    DISABLED = "disabled"
 ```
 
 ---

@@ -24,21 +24,20 @@ flowchart TB
         end
 
         subgraph Gateway["API Gateway"]
-            REST[REST API]
-            WS[WebSocket<br/>Streaming]
+            API[echomind-api<br/>REST + WebSocket]
         end
 
-        subgraph Core["Agent Core"]
-            ORCHESTRATOR[Agent Orchestrator]
-            PLANNER[Query Planner]
-            EXECUTOR[Tool Executor]
-            MEMORY[Memory Manager]
+        subgraph Search["Agentic Search"]
+            SEARCH[echomind-search<br/>Semantic Kernel]
         end
 
-        subgraph Processing["Document Processing"]
-            CONNECTOR[Connectors]
-            CHUNKER[Semantic Chunker]
-            EMBEDDER[Embedder Service]
+        subgraph Ingestion["Document Ingestion"]
+            ORCH[echomind-orchestrator<br/>APScheduler]
+            CONN[echomind-connector<br/>Teams/Drive/OneDrive]
+            SEM[echomind-semantic<br/>Extract + Chunk]
+            EMBED[echomind-embedder<br/>Text → Vector]
+            VOICE[echomind-voice<br/>Whisper]
+            VISION[echomind-vision<br/>BLIP + OCR]
         end
 
         subgraph Storage["Data Layer"]
@@ -60,33 +59,31 @@ flowchart TB
     end
 
     subgraph External["External Data Sources"]
-        CONNECTORS_EXT[OneDrive/Teams<br/>GDrive/Slack/etc]
+        CONNECTORS_EXT[OneDrive/Teams<br/>GDrive/Web/Files]
     end
 
     WEB & API_CLIENT & BOT --> AUTHENTIK
-    AUTHENTIK -->|JWT Token| REST & WS
-    REST & WS -->|Validated Request| ORCHESTRATOR
-    ORCHESTRATOR --> PLANNER
-    ORCHESTRATOR --> EXECUTOR
-    ORCHESTRATOR --> MEMORY
-    PLANNER --> VECTORDB
-    EXECUTOR --> NATS
-    MEMORY --> CACHE
-    MEMORY --> RELDB
+    AUTHENTIK -->|JWT Token| API
+    API -->|Query| SEARCH
+    SEARCH --> VECTORDB
+    SEARCH --> LLM_ROUTER
+    SEARCH --> CACHE
 
-    NATS --> CONNECTOR
-    NATS --> CHUNKER
-    NATS --> EMBEDDER
+    ORCH -->|NATS| CONN
+    CONN -->|NATS| SEM
+    SEM -->|gRPC| EMBED
+    SEM -->|NATS| VOICE
+    SEM -->|NATS| VISION
+    VOICE -->|text| SEM
+    VISION -->|text| SEM
+    EMBED --> VECTORDB
 
-    CONNECTOR --> OBJSTORE
-    CHUNKER --> EMBEDDER
-    EMBEDDER --> VECTORDB
+    CONN --> OBJSTORE
+    CONN --> CONNECTORS_EXT
+    API --> RELDB
 
-    ORCHESTRATOR --> LLM_ROUTER
     LLM_ROUTER --> PRIVATE_LLM
     LLM_ROUTER --> CLOUD_LLM
-
-    CONNECTOR --> CONNECTORS_EXT
 ```
 
 > **Authentication Flow**: Clients authenticate with Authentik (OIDC) first, receive a JWT token, then include it in requests to the API Gateway. The gateway validates the token before forwarding to backend services. This follows the [OAuth 2.0 Resource Server pattern](https://www.solo.io/topics/api-gateway/api-gateway-authentication).
@@ -95,47 +92,45 @@ flowchart TB
 
 ## Agentic RAG Flow
 
-The key differentiator from traditional RAG: **the agent decides what to retrieve, when, and whether to retrieve at all**.
+The key differentiator from traditional RAG: **the agent decides what to retrieve, when, and whether to retrieve at all**. The `echomind-search` service implements this using Semantic Kernel.
 
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant O as Agent Orchestrator
-    participant P as Query Planner
-    participant M as Memory Manager
-    participant R as Retriever
-    participant T as Tool Executor
+    participant API as echomind-api
+    participant S as echomind-search<br/>(Semantic Kernel)
+    participant Q as Qdrant
+    participant R as Redis
     participant L as LLM Router
 
-    U->>O: User Query
-    O->>M: Load conversation context
-    M-->>O: Short-term + Long-term memory
+    U->>API: User Query (HTTP/WebSocket)
+    API->>S: Forward query (gRPC)
 
-    O->>P: Analyze query intent
-    P->>L: "What info do I need?"
-    L-->>P: Retrieval plan
+    S->>R: Load conversation context
+    R-->>S: Short-term + Long-term memory
+
+    S->>S: Think: What info do I need?
 
     alt Needs retrieval
-        P->>R: Execute retrieval strategy
-        R->>R: Multi-collection search<br/>(user/group/org)
-        R-->>P: Retrieved chunks + scores
-        P->>P: Evaluate: sufficient?
+        S->>Q: Execute retrieval strategy
+        Q-->>S: Retrieved chunks + scores
+        S->>S: Evaluate: sufficient?
 
         opt Needs more context
-            P->>R: Refined query
-            R-->>P: Additional chunks
+            S->>Q: Refined query
+            Q-->>S: Additional chunks
         end
     end
 
     alt Needs tool execution
-        P->>T: Execute tool (API call, code, etc)
-        T-->>P: Tool result
+        S->>S: Execute tool (calculator, web, etc)
     end
 
-    P->>L: Generate response with context
-    L-->>O: Streamed response
-    O->>M: Update memory
-    O->>U: Stream response
+    S->>L: Generate response with context
+    L-->>S: Streamed tokens
+    S->>R: Update memory
+    S-->>API: Stream response
+    API-->>U: Stream to client
 ```
 
 ---
@@ -491,13 +486,13 @@ flowchart TB
 
 ---
 
-## Directory Structure (Proposed)
+## Directory Structure
 
 ```
 echomind/
 ├── docs/                    # Documentation
 │   ├── architecture.md      # This file
-│   └── api/                 # API documentation
+│   └── services/            # Service-specific docs
 ├── src/
 │   ├── api/                 # FastAPI application
 │   │   ├── routes/
@@ -509,25 +504,29 @@ echomind/
 │   │   ├── memory/
 │   │   └── tools/
 │   ├── services/            # Background services
-│   │   ├── embedder/
-│   │   ├── semantic/
-│   │   ├── connector/
-│   │   └── search/
+│   │   ├── embedder/        # Text → Vector (gRPC)
+│   │   ├── semantic/        # Document chunking (NATS)
+│   │   ├── search/          # Vector search (gRPC)
+│   │   ├── transformer/     # Text splitting (gRPC)
+│   │   ├── voice/           # Whisper (NATS)
+│   │   └── vision/          # BLIP+OCR (NATS)
 │   ├── connectors/          # Data source connectors
 │   │   ├── onedrive/
 │   │   ├── teams/
 │   │   ├── web/
 │   │   └── file/
-│   ├── db/                  # Database clients
-│   │   ├── postgres.py
-│   │   ├── qdrant.py
-│   │   ├── redis.py
-│   │   └── minio.py
 │   ├── proto/               # Protocol Buffer definitions (source of truth)
 │   │   ├── public/          # Client-facing API objects
 │   │   └── internal/        # Internal service objects
-│   ├── models/              # Generated Pydantic models (from proto)
-│   └── lib/                 # Shared utilities
+│   ├── echomind_lib/        # SHARED LIBRARY
+│   │   ├── db/              # Database clients
+│   │   │   ├── models/      # SQLAlchemy ORM models
+│   │   │   ├── postgres.py
+│   │   │   ├── qdrant.py
+│   │   │   └── nats_*.py
+│   │   ├── helpers/         # Utility code
+│   │   └── models/          # AUTO-GENERATED (from proto)
+│   └── web/                 # React client
 ├── deployment/
 │   ├── docker/
 │   │   ├── Dockerfile

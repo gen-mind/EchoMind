@@ -36,7 +36,7 @@ EchoMind is a **Python-only Agentic RAG** platform with multi-step retrieval, to
 
 1. **Import from `echomind_lib`** - Never duplicate code across services
 2. **Proto = Source of Truth** - Never hand-write Pydantic models. Regenerate: `make gen-proto`
-3. **Never edit generated code** in `echomind_lib/models/` or `web/src/models/`
+3. **Never edit generated code** in `echomind_lib/models/` or `src/web/src/models/`
 4. **Emoji logging required** - See `.claude/rules/logging.md`
 
 ---
@@ -57,8 +57,8 @@ echomind/
 │   │   └── vision/          # BLIP+OCR (NATS)
 │   ├── connectors/          # Data source connectors
 │   ├── proto/               # Protocol Buffers (SOURCE OF TRUTH)
-│   └── echomind_lib/        # SHARED LIBRARY
-├── web/                     # React client
+│   ├── echomind_lib/        # SHARED LIBRARY
+│   └── web/                 # React client
 ├── deployment/
 ├── tests/
 └── agent_docs/              # Task-specific AI context

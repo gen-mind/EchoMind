@@ -15,7 +15,7 @@ PROTO_DIR := .
 PUBLIC_DIR := public
 INTERNAL_DIR := internal
 PYTHON_OUT := ../echomind_lib/models
-TS_OUT := ../../web/src/models
+TS_OUT := ../web/src/models
 
 # Proto compiler
 PROTOC := protoc

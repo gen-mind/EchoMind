@@ -6,7 +6,7 @@
 #   src/proto/public/*.proto   -> models/public/       (API-facing models)
 #   src/proto/internal/*.proto -> models/internal/     (service-to-service models)
 #   src/proto/common.proto     -> models/              (shared types)
-#   src/proto/public/*.proto   -> web/src/models/      (TypeScript types)
+#   src/proto/public/*.proto   -> src/web/src/models/  (TypeScript types)
 #
 # Usage:
 #   ./scripts/generate_proto.sh           # Generate both Python and TypeScript
@@ -31,7 +31,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 PROTO_DIR="$PROJECT_ROOT/src/proto"
 PYTHON_OUTPUT_DIR="$PROJECT_ROOT/src/echomind_lib/models"
-TS_OUTPUT_DIR="$PROJECT_ROOT/web/src/models"
+TS_OUTPUT_DIR="$PROJECT_ROOT/src/web/src/models"
 
 # What to generate
 GENERATE_PYTHON=false
