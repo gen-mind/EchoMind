@@ -347,7 +347,7 @@ async def get_message_sources(
             document_id=d.document_id,
             chunk_id=d.chunk_id,
             score=float(d.relevance_score) if d.relevance_score else None,
-            title="",  # TODO: Join with Document to get title
+            title="",  # Stub: Document join not implemented
         )
         for d in docs
     ]

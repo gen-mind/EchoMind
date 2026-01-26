@@ -63,7 +63,7 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: IntegrityError
     ) -> JSONResponse:
         """Handle database integrity errors."""
-        logger.error(f"Database integrity error: {exc}")
+        logger.error(f"❌ Database integrity error: {exc}")
         
         # Try to extract useful info from the error
         message = "Database constraint violation"
@@ -86,7 +86,7 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: SQLAlchemyError
     ) -> JSONResponse:
         """Handle general SQLAlchemy errors."""
-        logger.error(f"Database error: {exc}")
+        logger.error(f"❌ Database error: {exc}")
         
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -102,7 +102,7 @@ def setup_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def general_error_handler(request: Request, exc: Exception) -> JSONResponse:
         """Handle unexpected errors."""
-        logger.exception(f"Unexpected error: {exc}")
+        logger.exception(f"💀 Unexpected error: {exc}")
         
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

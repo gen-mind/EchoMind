@@ -2,7 +2,7 @@
 Connector CRUD operations.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Sequence
 
 from sqlalchemy import select
@@ -12,7 +12,7 @@ from echomind_lib.db.crud.base import CRUDBase, SoftDeleteMixin
 from echomind_lib.db.models import Connector
 
 
-class ConnectorCRUD(SoftDeleteMixin, CRUDBase[Connector]):
+class ConnectorCRUD(SoftDeleteMixin[Connector], CRUDBase[Connector]):
     """
     CRUD operations for Connector model.
 
@@ -114,7 +114,7 @@ class ConnectorCRUD(SoftDeleteMixin, CRUDBase[Connector]):
         Returns:
             List of connectors needing sync.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         result = await session.execute(
             select(Connector)
             .where(Connector.deleted_date.is_(None))
@@ -129,8 +129,10 @@ class ConnectorCRUD(SoftDeleteMixin, CRUDBase[Connector]):
             if c.last_sync_at is None:
                 due.append(c)
             else:
-                from datetime import timedelta
                 next_sync = c.last_sync_at + timedelta(minutes=c.refresh_freq_minutes)
+                # Handle timezone-naive timestamps from DB
+                if next_sync.tzinfo is None:
+                    next_sync = next_sync.replace(tzinfo=timezone.utc)
                 if next_sync <= now:
                     due.append(c)
         return due
@@ -158,7 +160,7 @@ class ConnectorCRUD(SoftDeleteMixin, CRUDBase[Connector]):
         if connector:
             connector.status = status
             connector.status_message = status_message
-            connector.last_update = datetime.utcnow()
+            connector.last_update = datetime.now(timezone.utc)
             await session.flush()
             return connector
         return None
@@ -186,9 +188,9 @@ class ConnectorCRUD(SoftDeleteMixin, CRUDBase[Connector]):
         if connector:
             connector.status = "active"
             connector.status_message = None
-            connector.last_sync_at = datetime.utcnow()
+            connector.last_sync_at = datetime.now(timezone.utc)
             connector.docs_analyzed = docs_analyzed
-            connector.last_update = datetime.utcnow()
+            connector.last_update = datetime.now(timezone.utc)
             if state is not None:
                 connector.state = state
             await session.flush()

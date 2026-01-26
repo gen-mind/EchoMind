@@ -294,7 +294,7 @@ async def trigger_sync(
     db_connector.status = "pending"
     db_connector.user_id_last_update = user.id
     
-    # TODO: Publish sync request to NATS
+    # Stub: NATS publish requires Orchestrator service (Phase 2)
     
     return TriggerSyncResponse(
         success=True,

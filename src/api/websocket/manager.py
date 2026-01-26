@@ -76,7 +76,7 @@ class ConnectionManager:
                 user_id=user_id,
             )
         
-        logger.info(f"User {user_id} connected via WebSocket")
+        logger.info(f"🔌 User {user_id} connected via WebSocket")
     
     def disconnect(self, user_id: int) -> None:
         """
@@ -96,7 +96,7 @@ class ConnectionManager:
                         del self._session_subscribers[session_id]
             
             del self._connections[user_id]
-            logger.info(f"User {user_id} disconnected from WebSocket")
+            logger.info(f"🔌 User {user_id} disconnected from WebSocket")
     
     def subscribe(self, user_id: int, session_id: int) -> None:
         """
@@ -149,7 +149,7 @@ class ConnectionManager:
             await self._connections[user_id].websocket.send_json(message)
             return True
         except Exception as e:
-            logger.error(f"Failed to send message to user {user_id}: {e}")
+            logger.error(f"❌ Failed to send message to user {user_id}: {e}")
             self.disconnect(user_id)
             return False
     

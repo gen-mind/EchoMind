@@ -86,9 +86,9 @@ class ChatHandler:
         try:
             await self._message_loop(websocket, user)
         except WebSocketDisconnect:
-            logger.info(f"User {user.id} disconnected")
+            logger.info(f"🔌 User {user.id} disconnected")
         except Exception as e:
-            logger.error(f"WebSocket error for user {user.id}: {e}")
+            logger.error(f"❌ WebSocket error for user {user.id}: {e}")
         finally:
             # Cancel any active generations
             if user.id in self._active_generations:
@@ -156,7 +156,7 @@ class ChatHandler:
         if user.id in self._active_generations:
             self._active_generations[user.id].cancel()
             del self._active_generations[user.id]
-            logger.info(f"Cancelled generation for user {user.id}")
+            logger.info(f"🛑 Cancelled generation for user {user.id}")
     
     async def _process_chat(
         self,
@@ -176,19 +176,20 @@ class ChatHandler:
                 "type": MessageType.RETRIEVAL_START,
                 "session_id": session_id,
                 "query": query,
-                "rephrased_query": query,  # TODO: Implement query rephrasing
+                "rephrased_query": query,  # Stub: query rephrasing not implemented
             })
             
-            # TODO: Implement actual retrieval
+            # Stub: Retrieval not implemented - requires Search service
+            # Production implementation:
             # 1. Rephrase query using LLM
-            # 2. Embed query
+            # 2. Embed query via Embedder gRPC
             # 3. Search Qdrant for relevant chunks
             # 4. Return sources
             
             await asyncio.sleep(0.5)  # Simulate retrieval
             
             # Send retrieval complete
-            sources: list[dict[str, Any]] = []  # TODO: Get actual sources
+            sources: list[dict[str, Any]] = []  # Stub: empty until Search service
             await self.manager.send_to_user(user.id, {
                 "type": MessageType.RETRIEVAL_COMPLETE,
                 "session_id": session_id,
@@ -205,7 +206,8 @@ class ChatHandler:
                 })
                 return
             
-            # TODO: Implement actual LLM generation with streaming
+            # Stub: LLM generation not implemented - requires Search service
+            # Production implementation:
             # 1. Build prompt with context
             # 2. Call LLM with streaming
             # 3. Stream tokens back to client
@@ -232,15 +234,15 @@ class ChatHandler:
             await self.manager.send_to_user(user.id, {
                 "type": MessageType.GENERATION_COMPLETE,
                 "session_id": session_id,
-                "message_id": 0,  # TODO: Return actual message ID
+                "message_id": 0,  # Stub: no DB persistence yet
                 "token_count": token_count,
             })
             
         except asyncio.CancelledError:
-            logger.info(f"Generation cancelled for user {user.id}")
+            logger.info(f"🛑 Generation cancelled for user {user.id}")
             raise
         except Exception as e:
-            logger.error(f"Error processing chat for user {user.id}: {e}")
+            logger.error(f"❌ Error processing chat for user {user.id}: {e}")
             await self._send_error(user.id, "GENERATION_ERROR", str(e))
         finally:
             if user.id in self._active_generations:

@@ -356,3 +356,31 @@ services:
       - backend
     labels:
       - "traefik.enable=false"
+
+  # ===============================================
+  # EchoMind Orchestrator - Connector Sync Scheduler
+  # ===============================================
+  orchestrator:
+    image: gsantopaolo/echomind-orchestrator:${ORCHESTRATOR_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src
+      dockerfile: orchestrator/Dockerfile
+    container_name: echomind-orchestrator
+    hostname: orchestrator
+    env_file:
+      - ${CONFIG_PATH}/orchestrator/orchestrator.env
+    environment:
+      - ORCHESTRATOR_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${API_DB_NAME}
+      - ORCHESTRATOR_NATS_URL=nats://nats:4222
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+      nats:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"

@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package echomind.internal;
+
+option go_package = "echomind/proto/internal";
+
+import "google/protobuf/struct.proto";
+import "public/connector.proto";
+
+// Request to sync a connector (sent by Orchestrator)
+message ConnectorSyncRequest {
+  int32 connector_id = 1;
+  echomind.public.ConnectorType type = 2;
+  int32 user_id = 3;
+  echomind.public.ConnectorScope scope = 4;
+  optional string scope_id = 5;
+  google.protobuf.Struct config = 6;
+  google.protobuf.Struct state = 7;
+  string chunking_session = 8;  // UUID for this sync session
+}
+
+// Request to process a document (sent by Connector)
+message DocumentProcessRequest {
+  int32 document_id = 1;
+  int32 connector_id = 2;
+  int32 user_id = 3;
+  string minio_path = 4;  // Path to file in MinIO
+  string chunking_session = 5;
+  echomind.public.ConnectorScope scope = 6;
+  optional string scope_id = 7;
+}

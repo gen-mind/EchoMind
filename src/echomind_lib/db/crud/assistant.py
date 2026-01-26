@@ -11,7 +11,7 @@ from echomind_lib.db.crud.base import CRUDBase, SoftDeleteMixin
 from echomind_lib.db.models import Assistant
 
 
-class AssistantCRUD(SoftDeleteMixin, CRUDBase[Assistant]):
+class AssistantCRUD(SoftDeleteMixin[Assistant], CRUDBase[Assistant]):
     """
     CRUD operations for Assistant model.
 

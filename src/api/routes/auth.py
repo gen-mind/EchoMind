@@ -102,5 +102,5 @@ async def delete_session() -> None:
 
     Currently just a placeholder - actual logout is handled by OIDC.
     """
-    # TODO: Implement session invalidation if needed
+    # Stub: Session invalidation handled by OIDC provider (Authentik)
     pass

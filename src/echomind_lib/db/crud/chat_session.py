@@ -2,7 +2,7 @@
 ChatSession CRUD operations.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Sequence
 
 from sqlalchemy import select, func
@@ -12,7 +12,7 @@ from echomind_lib.db.crud.base import CRUDBase, SoftDeleteMixin
 from echomind_lib.db.models import ChatSession
 
 
-class ChatSessionCRUD(SoftDeleteMixin, CRUDBase[ChatSession]):
+class ChatSessionCRUD(SoftDeleteMixin[ChatSession], CRUDBase[ChatSession]):
     """
     CRUD operations for ChatSession model.
 
@@ -130,7 +130,7 @@ class ChatSessionCRUD(SoftDeleteMixin, CRUDBase[ChatSession]):
         chat_session = await self.get_by_id_active(session, chat_session_id)
         if chat_session:
             chat_session.title = title
-            chat_session.last_update = datetime.utcnow()
+            chat_session.last_update = datetime.now(timezone.utc)
             if user_id:
                 chat_session.user_id_last_update = user_id
             await session.flush()
@@ -155,8 +155,8 @@ class ChatSessionCRUD(SoftDeleteMixin, CRUDBase[ChatSession]):
         chat_session = await self.get_by_id_active(session, chat_session_id)
         if chat_session:
             chat_session.message_count += 1
-            chat_session.last_message_at = datetime.utcnow()
-            chat_session.last_update = datetime.utcnow()
+            chat_session.last_message_at = datetime.now(timezone.utc)
+            chat_session.last_update = datetime.now(timezone.utc)
             await session.flush()
             return chat_session
         return None

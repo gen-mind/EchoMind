@@ -164,7 +164,7 @@ class CRUDBase(Generic[ModelT]):
         return False
 
 
-class SoftDeleteMixin:
+class SoftDeleteMixin(Generic[ModelT]):
     """
     Mixin for models that support soft delete.
 

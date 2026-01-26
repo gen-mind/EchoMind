@@ -125,9 +125,8 @@ async def search_documents(
     if not connectors:
         return DocumentSearchResponse(results=[])
     
-    # TODO: Get embedding for query
-    # For now, return empty results
-    # In production, this would:
+    # Stub: Vector search requires Embedder + Qdrant integration (Phase 2)
+    # Production implementation:
     # 1. Embed the query using the active embedding model
     # 2. Search Qdrant collections based on connector scopes
     # 3. Return ranked results
@@ -207,8 +206,8 @@ async def delete_document(
             detail="Document not found",
         )
     
-    # TODO: Delete chunks from Qdrant
-    # TODO: Delete file from MinIO
+    # Stub: Qdrant chunk deletion requires vector DB integration (Phase 2)
+    # Stub: MinIO file deletion requires storage integration (Phase 2)
     
     # Delete from database
     await db.delete(db_document)

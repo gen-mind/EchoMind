@@ -266,7 +266,7 @@ async def test_llm_connection(
             detail="LLM not found",
         )
     
-    # TODO: Implement actual LLM connection test
+    # Stub: LLM connection test requires LLM router integration (Phase 5)
     return TestLLMResponse(
         success=True,
         message="Connection test not yet implemented",

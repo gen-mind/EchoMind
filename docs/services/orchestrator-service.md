@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Technology**: APScheduler
-> **Location**: `src/services/orchestrator/`
+> **Location**: `src/orchestrator/`
 
 ---
 
@@ -19,6 +19,7 @@ The Orchestrator Service is a **lightweight trigger service** that monitors the 
 - Fetch data from external sources
 - Process documents
 - Update status to `syncing`, `active`, or `error` (other services do this)
+- Determine if content has changed (downstream services handle this)
 
 ---
 
@@ -80,13 +81,194 @@ Query the `connectors` table for rows that need sync:
 
 | Connector Type | Default Refresh | Route To | Behavior |
 |----------------|-----------------|----------|----------|
-| `web` | 7 days | Semantic | Full re-crawl |
+| `web` | 7 days | Semantic | Conditional fetch (ETag/Last-Modified) |
 | `file` | One-time | Semantic | Manual upload, no refresh |
-| `onedrive` | 7 days | Connector | Delta sync (changed files) |
-| `google_drive` | 7 days | Connector | Delta sync (changed files) |
+| `onedrive` | 7 days | Connector | Delta API sync (cTag comparison) |
+| `google_drive` | 7 days | Connector | Changes API sync (md5Checksum) |
 | `teams` | 1 day | Connector | Incremental (new messages) |
 
 **Connector Types:** See [Proto Definitions](../proto-definitions.md#connectortype)
+
+---
+
+## Change Detection Strategies
+
+The orchestrator triggers syncs based on time intervals. **Change detection happens in downstream services** (Connector/Semantic) to avoid unnecessary processing.
+
+### Web Pages (Semantic Service)
+
+Web pages use HTTP conditional requests:
+
+| Method | Header | Description |
+|--------|--------|-------------|
+| **ETag** | `If-None-Match` | Server returns 304 if content unchanged |
+| **Last-Modified** | `If-Modified-Since` | Server returns 304 if not modified since date |
+| **Content Hash** | N/A | Fallback: compute MD5 of response body, compare with stored hash |
+
+**Implementation:**
+```python
+# Store in connector.state
+{
+    "etag": "\"abc123\"",
+    "last_modified": "Wed, 21 Oct 2023 07:28:00 GMT",
+    "content_hash": "d41d8cd98f00b204e9800998ecf8427e"
+}
+
+# On sync, send conditional request
+headers = {}
+if state.get("etag"):
+    headers["If-None-Match"] = state["etag"]
+if state.get("last_modified"):
+    headers["If-Modified-Since"] = state["last_modified"]
+
+response = requests.get(url, headers=headers)
+if response.status_code == 304:
+    logger.info("📄 Content unchanged, skipping processing")
+    return
+```
+
+### Google Drive (Connector Service)
+
+Google Drive uses the **Changes API** with page tokens:
+
+| Field | Purpose |
+|-------|---------|
+| `changes.list` | Returns changed files since last `pageToken` |
+| `md5Checksum` | File metadata field for content verification |
+| `pageToken` | Cursor for tracking sync position |
+
+**Key Points:**
+- Cannot compute hash without downloading file
+- Use `md5Checksum` from file metadata (no download needed)
+- Store `pageToken` in `connector.state` for incremental sync
+
+**Implementation:**
+```python
+# Store in connector.state
+{
+    "page_token": "12345",
+    "file_checksums": {
+        "file_id_1": "d41d8cd98f00b204e9800998ecf8427e",
+        "file_id_2": "098f6bcd4621d373cade4e832627b4f6"
+    }
+}
+
+# On sync
+changes = drive_service.changes().list(
+    pageToken=state["page_token"],
+    fields="newStartPageToken,changes(fileId,file(md5Checksum,name))"
+).execute()
+
+for change in changes.get("changes", []):
+    file_id = change["fileId"]
+    new_checksum = change.get("file", {}).get("md5Checksum")
+    old_checksum = state["file_checksums"].get(file_id)
+
+    if new_checksum != old_checksum:
+        # File changed, download and process
+        download_to_minio(file_id)
+```
+
+### OneDrive (Connector Service)
+
+OneDrive uses the **Delta API** with cTag for content changes:
+
+| Field | Purpose |
+|-------|---------|
+| `delta` endpoint | Returns changed items since last `deltaLink` |
+| `cTag` | Changes when file **content** changes |
+| `eTag` | Changes for any modification (content or metadata) |
+
+**Key Points:**
+- Use `cTag` (not `eTag`) to detect content changes
+- Store `deltaLink` in `connector.state` for incremental sync
+- No download needed to detect changes
+
+**Implementation:**
+```python
+# Store in connector.state
+{
+    "delta_link": "https://graph.microsoft.com/v1.0/me/drive/root/delta?token=xxx",
+    "file_ctags": {
+        "item_id_1": "c:{abc123}",
+        "item_id_2": "c:{def456}"
+    }
+}
+
+# On sync
+response = requests.get(state["delta_link"])
+for item in response.json().get("value", []):
+    item_id = item["id"]
+    new_ctag = item.get("cTag")
+    old_ctag = state["file_ctags"].get(item_id)
+
+    if new_ctag != old_ctag:
+        # Content changed, download and process
+        download_to_minio(item_id)
+```
+
+### File Upload (Semantic Service)
+
+Uploaded files use hash-based change detection:
+
+| Method | Description |
+|--------|-------------|
+| **MD5 Hash** | Compute hash of uploaded file, compare with stored hash |
+
+Files are uploaded directly to MinIO, so hash computation is local.
+
+---
+
+## File Processing Flow
+
+All files are **copied to MinIO** before processing. The physical file is **deleted after processing completes or errors**.
+
+```mermaid
+flowchart LR
+    subgraph External["External Source"]
+        GD[Google Drive]
+        OD[OneDrive]
+        WEB[Web Page]
+    end
+
+    subgraph MinIO["MinIO Storage"]
+        FILE[Temporary File]
+    end
+
+    subgraph Processing["Processing Pipeline"]
+        SEM[Semantic Service]
+        EMB[Embedder Service]
+    end
+
+    subgraph Cleanup["Cleanup"]
+        DEL[Delete Physical File]
+    end
+
+    GD -->|Download| FILE
+    OD -->|Download| FILE
+    WEB -->|Download| FILE
+
+    FILE --> SEM
+    SEM --> EMB
+    EMB --> DEL
+```
+
+**Flow:**
+1. **Download**: Connector downloads file to MinIO (temp bucket)
+2. **Process**: Semantic extracts content, Embedder creates vectors
+3. **Store**: Vectors stored in Qdrant, metadata in PostgreSQL
+4. **Delete**: Physical file deleted from MinIO
+
+**Why copy to MinIO?**
+- External APIs have rate limits
+- Processing may require multiple reads (chunking, embedding)
+- Provides consistent storage interface
+- Enables retry without re-downloading
+
+**Cleanup triggers:**
+- Processing completes successfully → Delete file
+- Processing fails permanently → Delete file + mark connector as error
+- Processing fails transiently → Keep file for retry (configurable TTL)
 
 ### 3. Status Flow
 
@@ -125,7 +307,7 @@ stateDiagram-v2
 ```mermaid
 flowchart TB
     subgraph Orchestrator["Orchestrator Service"]
-        APS[APScheduler<br/>Interval: 60s]
+        APS[APScheduler<br/>Interval: Configurable]
         JOB[ConnectorSync Job]
         APS --> JOB
     end
@@ -162,9 +344,11 @@ flowchart TB
 
 ### 1. ConnectorSyncJob (Primary)
 
-Runs every minute, checks for connectors due for sync:
+Runs at configurable interval (default: 60 seconds), checks for connectors due for sync:
 
 ```python
+from datetime import datetime, timezone
+
 async def connector_sync_check() -> None:
     """
     Check for connectors that need synchronization.
@@ -175,7 +359,7 @@ async def connector_sync_check() -> None:
 
     Does NOT wait for response or do any processing.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Find connectors eligible for sync:
     # - Status is active (ready) or error (can retry)
@@ -299,15 +483,48 @@ src/services/orchestrator/
 ```bash
 # Orchestrator Settings
 ORCHESTRATOR_ENABLED=true
-ORCHESTRATOR_CHECK_INTERVAL_SECONDS=60
+ORCHESTRATOR_CHECK_INTERVAL_SECONDS=60       # Configurable job interval (default: 60s)
 ORCHESTRATOR_MAX_CONCURRENT_SYNCS=5
 ORCHESTRATOR_JOB_STORE_URL=${DATABASE_URL}
 
-# Default Refresh Intervals (minutes)
+# Default Refresh Intervals (minutes) - can be overridden per connector
 ORCHESTRATOR_DEFAULT_REFRESH_WEB=10080       # 7 days
 ORCHESTRATOR_DEFAULT_REFRESH_DRIVE=10080     # 7 days
 ORCHESTRATOR_DEFAULT_REFRESH_CHAT=1440       # 1 day
 ORCHESTRATOR_DEFAULT_REFRESH_FILE=0          # Never (one-time)
+
+# File Cleanup
+ORCHESTRATOR_FILE_RETRY_TTL_HOURS=24         # Keep failed files for retry
+ORCHESTRATOR_FILE_CLEANUP_ENABLED=true       # Auto-delete processed files
+```
+
+### Config Class
+
+```python
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class OrchestratorSettings(BaseSettings):
+    """Orchestrator service configuration."""
+
+    enabled: bool = True
+    check_interval_seconds: int = 60  # Job interval - NOT hardcoded
+    max_concurrent_syncs: int = 5
+    job_store_url: str
+
+    # Default refresh intervals (can be overridden per connector)
+    default_refresh_web: int = 10080
+    default_refresh_drive: int = 10080
+    default_refresh_chat: int = 1440
+    default_refresh_file: int = 0
+
+    # File cleanup
+    file_retry_ttl_hours: int = 24
+    file_cleanup_enabled: bool = True
+
+    model_config = SettingsConfigDict(
+        env_prefix="ORCHESTRATOR_",
+        env_file=".env",
+    )
 ```
 
 ---
@@ -316,7 +533,7 @@ ORCHESTRATOR_DEFAULT_REFRESH_FILE=0          # Never (one-time)
 
 ### Phase 1: Core Orchestrator (MVP)
 - [ ] APScheduler setup with PostgreSQL job store
-- [ ] Connector sync check job (every minute)
+- [ ] Connector sync check job (configurable interval)
 - [ ] Update connector status to pending
 - [ ] NATS publisher for sync triggers
 - [ ] Basic health endpoint (`/healthz`)

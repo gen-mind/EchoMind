@@ -1,0 +1,17 @@
+# Scheduler
+APScheduler==3.10.4
+
+# Database
+sqlalchemy[asyncio]==2.0.35
+asyncpg==0.29.0
+
+# Data Validation
+pydantic==2.12.5
+pydantic-settings==2.12.0
+
+# Message Queue
+nats-py==2.9.0
+
+# Protobuf
+protobuf==5.28.2
+protobuf-pydantic-gen==0.1.8

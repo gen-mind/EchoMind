@@ -9,7 +9,7 @@ from echomind_lib.db.crud.base import CRUDBase, SoftDeleteMixin
 from echomind_lib.db.models import EmbeddingModel
 
 
-class EmbeddingModelCRUD(SoftDeleteMixin, CRUDBase[EmbeddingModel]):
+class EmbeddingModelCRUD(SoftDeleteMixin[EmbeddingModel], CRUDBase[EmbeddingModel]):
     """
     CRUD operations for EmbeddingModel.
 

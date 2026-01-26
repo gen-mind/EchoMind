@@ -11,7 +11,7 @@ from echomind_lib.db.crud.base import CRUDBase, SoftDeleteMixin
 from echomind_lib.db.models import LLM
 
 
-class LLMCRUD(SoftDeleteMixin, CRUDBase[LLM]):
+class LLMCRUD(SoftDeleteMixin[LLM], CRUDBase[LLM]):
     """
     CRUD operations for LLM model.
 
