@@ -75,11 +75,11 @@ class Orchestrator:
         """
         logger.info("🚀 EchoMind Orchestrator Service starting...")
         logger.info("📋 Configuration:")
-        logger.info("   Enabled: %s", self._settings.enabled)
-        logger.info("   Check interval: %d seconds", self._settings.check_interval_seconds)
-        logger.info("   Health port: %d", self._settings.health_port)
-        logger.info("   Database: %s", self._mask_url(self._settings.database_url))
-        logger.info("   NATS: %s", self._settings.nats_url)
+        logger.info("   ⚙️ Enabled: %s", self._settings.enabled)
+        logger.info("   ⏱️ Check interval: %d seconds", self._settings.check_interval_seconds)
+        logger.info("   🔌 Health port: %d", self._settings.health_port)
+        logger.info("   🗄️ Database: %s", self._mask_url(self._settings.database_url))
+        logger.info("   📡 NATS: %s", self._settings.nats_url)
 
         if not self._settings.enabled:
             logger.warning("⚠️ Orchestrator is disabled via configuration")
