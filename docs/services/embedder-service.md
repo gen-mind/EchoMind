@@ -206,18 +206,16 @@ class SentenceEncoder:
 ## Service Structure
 
 ```
-src/services/embedder/
-├── main.py                 # gRPC server entry
-├── grpc/
-│   ├── server.py
-│   └── servicer.py         # EmbedServiceServicer
-├── logic/
-│   ├── encoder.py          # SentenceEncoder
-│   ├── qdrant_writer.py    # Qdrant upsert logic
-│   └── exceptions.py
-├── middleware/
-│   └── error_handler.py
-└── config.py
+src/embedder/
+├── __init__.py             # Package marker
+├── main.py                 # gRPC server entry + servicer
+├── config.py               # Pydantic settings
+├── Dockerfile              # Container build
+├── pyproject.toml          # Dependencies
+└── logic/
+    ├── __init__.py
+    ├── encoder.py          # SentenceEncoder with caching
+    └── exceptions.py       # Domain exceptions
 ```
 
 ---

@@ -45,6 +45,7 @@ python: check-protoc
 		-I$(PROTO_DIR) \
 		--python_out=$(PYTHON_OUT) \
 		--pyi_out=$(PYTHON_OUT) \
+		--grpc_python_out=$(PYTHON_OUT) \
 		--pydantic_out=$(PYTHON_OUT) \
 		$(COMMON_PROTO) \
 		$(PUBLIC_DIR)/*.proto \

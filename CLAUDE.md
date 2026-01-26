@@ -48,15 +48,15 @@ EchoMind is a **Python-only Agentic RAG** platform with multi-step retrieval, to
 echomind/
 ├── src/
 │   ├── api/                 # FastAPI REST + WebSocket gateway
-│   ├── services/            # NATS/gRPC workers
-│   │   ├── search/          # Agentic search (Semantic Kernel, gRPC)
-│   │   ├── orchestrator/    # Scheduler (APScheduler, NATS pub)
-│   │   ├── connector/       # Data source fetcher (NATS sub)
-│   │   ├── semantic/        # Content extraction + chunking (NATS sub)
-│   │   ├── embedder/        # Text → Vector (gRPC)
-│   │   ├── voice/           # Whisper transcription (NATS sub)
-│   │   ├── vision/          # BLIP + OCR (NATS sub)
-│   │   └── migration/       # Alembic migrations (batch job)
+│   ├── search/              # Agentic search (Semantic Kernel, gRPC)
+│   ├── orchestrator/        # Scheduler (APScheduler, NATS pub)
+│   ├── connector/           # Data source fetcher (NATS sub)
+│   ├── semantic/            # Content extraction + chunking (NATS sub)
+│   ├── embedder/            # Text → Vector (gRPC)
+│   ├── voice/               # Whisper transcription (NATS sub)
+│   ├── vision/              # BLIP + OCR (NATS sub)
+│   ├── guardian/            # DLQ monitoring + alerting (NATS sub)
+│   ├── migration/           # Alembic migrations (batch job)
 │   ├── proto/               # Protocol Buffers (SOURCE OF TRUTH)
 │   ├── echomind_lib/        # SHARED LIBRARY
 │   └── web/                 # React client
@@ -263,7 +263,7 @@ Video (MP4)     → vision → frame extraction → BLIP → description → sem
 ## Quick Reference
 
 ### Start a New Service
-1. Create `src/services/{name}/`
+1. Create `src/{name}/` (services go directly under src/)
 2. Import from `echomind_lib`
 3. Define proto in `src/proto/internal/`
 4. Run `make gen-proto`

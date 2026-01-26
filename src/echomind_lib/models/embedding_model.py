@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 """
 @File    :   embedding_model.py
-@Time    :   2026-01-21 01:53:35
+@Time    :   2026-01-26 15:41:22
 @Desc    :   Generated Pydantic models from protobuf definitions
 """
 
@@ -28,6 +28,22 @@ class EmbedRequest(BaseModel):
         return protobuf2model(cls, src)
 
 
+class EmbedResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    embeddings: Optional[List[Embedding]] = _Field(default=None)
+
+    def to_protobuf(self) -> _message.Message:
+        """Convert Pydantic model to protobuf message"""
+        _proto = pool.FindMessageTypeByName("echomind.internal.EmbedResponse")
+        _cls: Type[_message.Message] = message_factory.GetMessageClass(_proto)
+        return model2protobuf(self, _cls())
+
+    @classmethod
+    def from_protobuf(cls, src: _message.Message) -> "EmbedResponse":
+        """Convert protobuf message to Pydantic model"""
+        return protobuf2model(cls, src)
+
+
 class Embedding(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     vector: Optional[List[float]] = _Field(default=0.0)
@@ -41,22 +57,6 @@ class Embedding(BaseModel):
 
     @classmethod
     def from_protobuf(cls, src: _message.Message) -> "Embedding":
-        """Convert protobuf message to Pydantic model"""
-        return protobuf2model(cls, src)
-
-
-class EmbedResponse(BaseModel):
-    model_config = ConfigDict(protected_namespaces=())
-    embeddings: Optional[List[Embedding]] = _Field(default=None)
-
-    def to_protobuf(self) -> _message.Message:
-        """Convert Pydantic model to protobuf message"""
-        _proto = pool.FindMessageTypeByName("echomind.internal.EmbedResponse")
-        _cls: Type[_message.Message] = message_factory.GetMessageClass(_proto)
-        return model2protobuf(self, _cls())
-
-    @classmethod
-    def from_protobuf(cls, src: _message.Message) -> "EmbedResponse":
         """Convert protobuf message to Pydantic model"""
         return protobuf2model(cls, src)
 

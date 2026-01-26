@@ -2,16 +2,15 @@
 # -*- encoding: utf-8 -*-
 """
 @File    :   agent_model.py
-@Time    :   2026-01-21 01:53:35
+@Time    :   2026-01-26 15:41:22
 @Desc    :   Generated Pydantic models from protobuf definitions
 """
 
 from enum import Enum as _Enum
 from google.protobuf import message as _message, message_factory
-from google.protobuf.struct_pb2 import Struct
 from protobuf_pydantic_gen.ext import model2protobuf, pool, protobuf2model
 from pydantic import BaseModel, ConfigDict, Field as _Field
-from typing import Any, Dict, List, Optional, Type
+from typing import List, Optional, Type
 
 
 class MemoryType(_Enum):

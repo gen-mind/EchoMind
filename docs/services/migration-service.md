@@ -181,18 +181,21 @@ else:
 ## Service Structure
 
 ```
-src/services/migration/
+src/migration/
+├── __init__.py             # Package marker
 ├── main.py                 # Entry point
+├── config.py               # Pydantic settings
 ├── alembic.ini             # Alembic config
-├── alembic/
-│   ├── env.py              # Migration environment
-│   ├── script.py.mako      # Migration template
-│   └── versions/           # Migration scripts
-│       ├── 001_initial.py
-│       ├── 002_add_connectors.py
-│       ├── 003_add_documents.py
-│       └── ...
-└── config.py
+├── Dockerfile              # Container build
+├── pyproject.toml          # Dependencies
+└── alembic/
+    ├── __init__.py
+    ├── env.py              # Migration environment
+    ├── script.py.mako      # Migration template
+    └── versions/           # Migration scripts
+        ├── 001_initial.py
+        ├── 002_add_connectors.py
+        └── ...
 ```
 
 ---

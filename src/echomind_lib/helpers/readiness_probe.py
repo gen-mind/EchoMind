@@ -194,3 +194,44 @@ def get_readiness_probe() -> ReadinessProbe:
     if _readiness_probe is None:
         _readiness_probe = ReadinessProbe()
     return _readiness_probe
+
+
+class SimpleHealthServer:
+    """
+    Simple HTTP health check server for standalone (non-FastAPI) services.
+
+    Usage:
+        server = SimpleHealthServer(port=8080)
+        threading.Thread(target=server.start, daemon=True).start()
+    """
+
+    def __init__(self, port: int = 8080):
+        """
+        Initialize health server.
+
+        Args:
+            port: HTTP port to listen on
+        """
+        self._port = port
+
+    def start(self) -> None:
+        """Start the HTTP health server (blocking)."""
+        import http.server
+        import socketserver
+
+        class HealthHandler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == "/healthz" or self.path == "/":
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(b'{"status": "healthy"}')
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+
+            def log_message(self, format, *args):
+                pass  # Suppress access logs
+
+        with socketserver.TCPServer(("", self._port), HealthHandler) as httpd:
+            httpd.serve_forever()

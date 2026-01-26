@@ -283,11 +283,18 @@ services:
       - API_AUTH_AUDIENCE=KgfSGS07LFhpniaqeMRKeyydcqy0cQNloCLFZI1f
       - API_AUTH_JWKS_URL=http://authentik-server:9000/application/o/echo-mind/jwks/
     depends_on:
-      - postgres
-      - qdrant
-      - minio
-      - nats
-      - authentik-server
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      authentik-server:
+        condition: service_started
     restart: unless-stopped
     networks:
       - frontend
@@ -300,3 +307,52 @@ services:
       # PRODUCTION: Uncomment for HTTPS
       # - "traefik.http.routers.api.entrypoints=websecure"
       # - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+
+  # ===============================================
+  # EchoMind Migration - Database Migrations
+  # ===============================================
+  migration:
+    image: gsantopaolo/echomind-migration:${MIGRATION_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src
+      dockerfile: migration/Dockerfile
+    container_name: echomind-migration
+    hostname: migration
+    env_file:
+      - ${CONFIG_PATH}/migration/migration.env
+    environment:
+      - MIGRATION_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${API_DB_NAME}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"
+
+  # ===============================================
+  # EchoMind Embedder - Text to Vector Embeddings
+  # ===============================================
+  embedder:
+    image: gsantopaolo/echomind-embedder:${EMBEDDER_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src
+      dockerfile: embedder/Dockerfile
+    container_name: echomind-embedder
+    hostname: embedder
+    ports:
+      - "50051:50051"  # gRPC API
+    env_file:
+      - ${CONFIG_PATH}/embedder/embedder.env
+    environment:
+      - EMBEDDER_QDRANT_HOST=qdrant
+      - EMBEDDER_QDRANT_PORT=6333
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"

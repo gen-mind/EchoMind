@@ -734,36 +734,42 @@ echomind/
 ├── src/
 │   ├── api/                 # FastAPI REST + WebSocket gateway
 │   │   ├── routes/
+│   │   ├── logic/           # Business logic layer
 │   │   ├── middleware/
 │   │   └── websocket/
-│   ├── services/            # Background services
-│   │   ├── search/          # Agentic search (Semantic Kernel, gRPC)
-│   │   │   ├── logic/       # SK plugins, tools, memory
-│   │   │   └── main.py
-│   │   ├── orchestrator/    # Scheduler service (APScheduler, NATS pub)
-│   │   │   ├── logic/
-│   │   │   │   └── jobs/    # connector_sync.py, cleanup.py
-│   │   │   └── main.py
-│   │   ├── connector/       # Data source connector (NATS sub)
-│   │   │   ├── logic/
-│   │   │   │   └── providers/  # onedrive.py, teams.py, gdrive.py
-│   │   │   └── main.py
-│   │   ├── semantic/        # Content extraction + chunking (NATS sub)
-│   │   │   ├── logic/
-│   │   │   │   ├── extractors/  # pdf.py, url.py, youtube.py
-│   │   │   │   └── chunkers/    # character.py, semantic.py
-│   │   │   └── main.py
-│   │   ├── embedder/        # Text → Vector (gRPC)
-│   │   │   ├── logic/
-│   │   │   └── main.py
-│   │   ├── voice/           # Whisper transcription (NATS sub)
-│   │   │   ├── logic/
-│   │   │   └── main.py
-│   │   ├── vision/          # BLIP + OCR (NATS sub)
-│   │   │   ├── logic/
-│   │   │   └── main.py
-│   │   └── migration/       # Alembic migrations (batch job)
-│   │       └── versions/
+│   ├── search/              # Agentic search (Semantic Kernel, gRPC)
+│   │   ├── logic/           # SK plugins, tools, memory
+│   │   └── main.py
+│   ├── orchestrator/        # Scheduler service (APScheduler, NATS pub)
+│   │   ├── logic/
+│   │   │   └── jobs/        # connector_sync.py, cleanup.py
+│   │   └── main.py
+│   ├── connector/           # Data source connector (NATS sub)
+│   │   ├── logic/
+│   │   │   └── providers/   # onedrive.py, teams.py, gdrive.py
+│   │   └── main.py
+│   ├── semantic/            # Content extraction + chunking (NATS sub)
+│   │   ├── logic/
+│   │   │   ├── extractors/  # pdf.py, url.py, youtube.py
+│   │   │   └── chunkers/    # character.py, semantic.py
+│   │   └── main.py
+│   ├── embedder/            # Text → Vector (gRPC)
+│   │   ├── logic/
+│   │   └── main.py
+│   ├── voice/               # Whisper transcription (NATS sub)
+│   │   ├── logic/
+│   │   └── main.py
+│   ├── vision/              # BLIP + OCR (NATS sub)
+│   │   ├── logic/
+│   │   └── main.py
+│   ├── guardian/            # DLQ monitoring + alerting (NATS sub)
+│   │   ├── logic/
+│   │   │   └── alerters/    # slack.py, pagerduty.py, webhook.py
+│   │   └── main.py
+│   ├── migration/           # Alembic migrations (batch job)
+│   │   ├── alembic/
+│   │   │   └── versions/
+│   │   └── main.py
 │   ├── proto/               # Protocol Buffer definitions (source of truth)
 │   │   ├── public/          # Client-facing API objects
 │   │   └── internal/        # Internal service objects
@@ -785,6 +791,10 @@ echomind/
 │       └── overlays/        # dev, staging, prod
 ├── config/                  # Configuration files
 ├── tests/
+│   └── unit/                # Unit tests per service
+│       ├── migration/
+│       ├── api/
+│       └── ...
 └── scripts/
 ```
 
