@@ -27,14 +27,32 @@ The Ingestor Service is a **complete rewrite** of the former Semantic Service, p
 
 ## What It Does
 
-The Ingestor Service handles **multimodal content extraction and chunking**:
+The Ingestor Service handles **multimodal content extraction and chunking** using the full nv-ingest library capabilities.
 
-- Extracts text, tables, charts, images from documents (PDF, DOCX, PPTX)
-- Extracts content from web pages and YouTube
-- Routes audio files to Voice service
-- Routes images/videos to Vision service
+### Handled Directly by nv-ingest
+
+| File Type | Extractor | Content Extracted |
+|-----------|-----------|-------------------|
+| **PDF** | pdfium + YOLOX NIMs | Text, tables, charts, infographics, images |
+| **DOCX** | docxreader | Text, embedded images |
+| **PPTX** | pptx_extractor | Text, slides, embedded images |
+| **HTML** | html_extractor | Text from HTML files |
+| **Audio** | Riva NIM (built into nv-ingest) | Transcription → text |
+
+### Routed to Other Services
+
+| File Type | Routed To | Reason |
+|-----------|-----------|--------|
+| **Video** (MP4, etc.) | Vision Service | nv-ingest has no video extraction |
+| **YouTube URLs** | Custom Extractor | Not supported by nv-ingest |
+| **Live Web URLs** | Custom Extractor | nv-ingest only handles HTML files, not web scraping |
+
+### Processing Pipeline
+
+- Extracts all content types from supported documents
 - Splits content into chunks using NVIDIA's tokenizer-based chunking
-- Sends chunks to Embedder for vectorization via gRPC
+- Sends text chunks to Embedder with `input_type="passage"`
+- Sends structured elements (tables/charts) as images to Embedder with multimodal model
 - Updates document status in database
 
 ---
@@ -49,9 +67,17 @@ flowchart TB
         NATS_SUB[NATS Subscriber]
         ROUTER[Content Router]
 
-        subgraph NVIngestAPI["nv_ingest_api (library)"]
-            EXTRACT[extract_primitives_from_pdf]
-            SPLIT[transform_text_split_and_tokenize]
+        subgraph NVIngestLib["nv-ingest library"]
+            PDF_EXT[PDF Extractor<br/>pdfium + YOLOX]
+            DOCX_EXT[DOCX Extractor]
+            PPTX_EXT[PPTX Extractor]
+            AUDIO_EXT[Audio Extractor<br/>Riva NIM]
+            CHUNKER[Tokenizer-based Chunker]
+        end
+
+        subgraph CustomExt["Custom Extractors"]
+            URL_EXT[URL Extractor]
+            YT_EXT[YouTube Extractor]
         end
 
         GRPC_CLIENT[gRPC Client]
@@ -61,13 +87,13 @@ flowchart TB
         NATS[(NATS JetStream)]
         MINIO[(MinIO)]
         DB[(PostgreSQL)]
-        VOICE[echomind-voice]
         VISION[echomind-vision]
     end
 
     subgraph EmbedderService["echomind-embedder"]
         GRPC_SERVER[gRPC Server :50051]
-        NVIDIA_MODEL[nvidia/llama-nemotron-embed-1b-v2]
+        TEXT_MODEL[Text Model<br/>llama-3.2-nv-embedqa-1b-v2]
+        VLM_MODEL[Multimodal Model<br/>nemoretriever-1b-vlm-embed]
         QDRANT_CLIENT[Qdrant Client]
     end
 
@@ -77,18 +103,25 @@ flowchart TB
 
     NATS -->|document.process| NATS_SUB
     NATS_SUB --> ROUTER
-    ROUTER -->|pdf/docx/pptx| EXTRACT
-    ROUTER -->|audio| VOICE
-    ROUTER -->|image/video| VISION
-    EXTRACT --> SPLIT
-    SPLIT --> GRPC_CLIENT
-    GRPC_CLIENT -->|EmbedRequest| GRPC_SERVER
-    GRPC_SERVER --> NVIDIA_MODEL
-    NVIDIA_MODEL --> QDRANT_CLIENT
+    ROUTER -->|pdf| PDF_EXT
+    ROUTER -->|docx| DOCX_EXT
+    ROUTER -->|pptx| PPTX_EXT
+    ROUTER -->|audio| AUDIO_EXT
+    ROUTER -->|video| VISION
+    ROUTER -->|url| URL_EXT
+    ROUTER -->|youtube| YT_EXT
+
+    PDF_EXT & DOCX_EXT & PPTX_EXT & AUDIO_EXT --> CHUNKER
+    URL_EXT & YT_EXT --> CHUNKER
+    CHUNKER --> GRPC_CLIENT
+
+    GRPC_CLIENT -->|text chunks| TEXT_MODEL
+    GRPC_CLIENT -->|tables/charts as images| VLM_MODEL
+    TEXT_MODEL & VLM_MODEL --> QDRANT_CLIENT
     QDRANT_CLIENT --> QDRANT
 
-    MINIO -.->|file bytes| EXTRACT
-    SPLIT -.->|update status| DB
+    MINIO -.->|file bytes| PDF_EXT
+    CHUNKER -.->|update status| DB
 ```
 
 ### Component Relationship
@@ -166,29 +199,39 @@ sequenceDiagram
 flowchart TD
     INPUT[Incoming Message] --> DETECT{Detect Content Type}
 
-    DETECT -->|application/pdf| PDF[PDF Processing]
-    DETECT -->|application/vnd.openxmlformats-officedocument| OFFICE[Office Docs]
-    DETECT -->|audio/*| AUDIO[Audio Route]
-    DETECT -->|image/*| IMAGE[Image Route]
-    DETECT -->|video/*| VIDEO[Video Route]
-    DETECT -->|text/html| URL[URL Processing]
-    DETECT -->|youtube.com| YT[YouTube Processing]
+    DETECT -->|application/pdf| PDF[PDF]
+    DETECT -->|application/vnd.openxmlformats-officedocument.wordprocessingml| DOCX[DOCX]
+    DETECT -->|application/vnd.openxmlformats-officedocument.presentationml| PPTX[PPTX]
+    DETECT -->|text/html file| HTML[HTML File]
+    DETECT -->|audio/*| AUDIO[Audio]
+    DETECT -->|video/*| VIDEO[Video]
+    DETECT -->|url http/https| URL[Live URL]
+    DETECT -->|youtube.com| YT[YouTube]
 
-    PDF --> NVINGEST[nv_ingest_api]
-    OFFICE --> NVINGEST
+    subgraph NVIngest["nv-ingest library (handles directly)"]
+        PDF --> PDF_EXT[pdfium + YOLOX]
+        DOCX --> DOCX_EXT[docxreader]
+        PPTX --> PPTX_EXT[pptx_extractor]
+        HTML --> HTML_EXT[html_extractor]
+        AUDIO --> AUDIO_EXT[Riva NIM transcription]
+    end
 
-    AUDIO -->|NATS publish| VOICE[Voice Service]
-    IMAGE -->|NATS publish| VISION[Vision Service]
-    VIDEO -->|NATS publish| VISION
+    subgraph CustomExtractors["Custom Extractors (not in nv-ingest)"]
+        URL --> URL_EXT[BeautifulSoup/Selenium]
+        YT --> YT_EXT[youtube_transcript_api]
+    end
 
-    URL --> URLEXT[URL Extractor]
-    YT --> YTEXT[YouTube Extractor]
+    subgraph RouteOut["Route to Other Services"]
+        VIDEO -->|NATS publish| VISION[Vision Service]
+    end
 
-    URLEXT --> CHUNKER[nv_ingest_api chunking]
-    YTEXT --> CHUNKER
-    NVINGEST --> EMBEDDER
-    CHUNKER --> EMBEDDER[Embedder gRPC]
+    PDF_EXT & DOCX_EXT & PPTX_EXT & HTML_EXT & AUDIO_EXT --> CHUNK[nv-ingest chunking]
+    URL_EXT & YT_EXT --> CHUNK
+
+    CHUNK --> EMBEDDER[Embedder gRPC]
 ```
+
+**Key Point**: Audio is handled **directly by nv-ingest** via Riva NIM - no routing to Voice service needed!
 
 ---
 
@@ -216,7 +259,7 @@ flowchart TD
 | Same code as NVIDIA | Uses identical extraction engines | 100% - verified in source |
 | No orchestration dependency | Core API has no Ray/Redis imports | 100% - verified via grep |
 | Production-tested | Used in NVIDIA RAG Blueprint | 100% - confirmed in docs |
-| Multimodal support | PDF, DOCX, PPTX, images, audio | 95% - verified most formats |
+| Multimodal support | PDF, DOCX, PPTX, HTML, Audio (via Riva) | 100% - verified from source code |
 
 ### Package Structure Used
 
@@ -385,22 +428,96 @@ message EmbedResponse {
 
 ---
 
+## Embedding Strategy: Structured Elements as Images
+
+Following NVIDIA's **Strategy 2** - text as text, tables/charts as images.
+
+### Two Embedding Models Required
+
+| Model | Use Case | Content Types |
+|-------|----------|---------------|
+| `nvidia/llama-3.2-nv-embedqa-1b-v2` | **Text embedding** | Plain text chunks |
+| `nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1` | **Multimodal embedding** | Tables, charts as images |
+
+### Why Strategy 2?
+
+| Aspect | Strategy 1 (All Text) | Strategy 2 (Structured as Images) |
+|--------|----------------------|----------------------------------|
+| Tables | Converted to markdown text | Embedded as image (preserves layout) |
+| Charts | Text description only | Embedded as image (captures visual) |
+| Accuracy | Good for text-heavy docs | Better for visual content |
+| Enterprise | Basic | **Recommended** |
+
+**Accuracy: 100%** - From NVIDIA's vlm-embed.md documentation.
+
+### How It Works
+
+```python
+# From nv-ingest documentation
+ingestor = (
+    Ingestor()
+    .files("./data/*.pdf")
+    .extract(
+        extract_text=True,
+        extract_tables=True,
+        extract_charts=True,
+    )
+    .embed(
+        structured_elements_modality="image",  # <-- Strategy 2
+    )
+)
+```
+
+### Embedder Service Requirements
+
+The Embedder service must support BOTH models:
+
+```mermaid
+flowchart LR
+    subgraph Ingestor
+        TEXT[Text Chunks]
+        STRUCT[Tables/Charts as Images]
+    end
+
+    subgraph Embedder["Embedder Service"]
+        TEXT_EMB[Text Model<br/>llama-3.2-nv-embedqa-1b-v2]
+        VLM_EMB[Multimodal Model<br/>nemoretriever-1b-vlm-embed-v1]
+    end
+
+    TEXT -->|input_type=passage| TEXT_EMB
+    STRUCT -->|input_type=image| VLM_EMB
+
+    TEXT_EMB --> QDRANT[(Qdrant)]
+    VLM_EMB --> QDRANT
+```
+
+---
+
 ## Embedder Service Updates
 
-The Embedder service is updated to use **NVIDIA's embedding model** with the exact same implementation as NIM.
+The Embedder service is updated to use **NVIDIA's embedding models** with the exact same implementation as NIM.
 
-### Model Details
+### Text Embedding Model
 
 | Property | Value |
 |----------|-------|
-| Model | nvidia/llama-nemotron-embed-1b-v2 |
+| Model | nvidia/llama-3.2-nv-embedqa-1b-v2 |
 | Dimensions | 2048 (configurable: 384, 512, 768, 1024) |
 | Max Tokens | 8192 |
 | Pooling | Mean pooling with attention mask |
 | Normalization | L2 |
 | Prefixes | `query:` for queries, `passage:` for documents |
 
-**Accuracy: 100%** - From official [HuggingFace model card](https://huggingface.co/nvidia/llama-nemotron-embed-1b-v2).
+### Multimodal Embedding Model
+
+| Property | Value |
+|----------|-------|
+| Model | nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1 |
+| Dimensions | 2048 |
+| Input | Text, images, or text+image |
+| Use Case | Tables/charts as images |
+
+**Accuracy: 100%** - From official NVIDIA documentation and HuggingFace model cards.
 
 ### Implementation: Raw Transformers (NVIDIA Way)
 
@@ -541,9 +658,13 @@ INGESTOR_CHUNK_SIZE=512
 INGESTOR_CHUNK_OVERLAP=50
 INGESTOR_TOKENIZER=meta-llama/Llama-3.2-1B
 
-# YOLOX NIM for table/chart detection (enterprise feature)
+# YOLOX NIM for table/chart detection
 YOLOX_NIM_ENDPOINT=http://yolox-nim:8000
 YOLOX_NIM_GRPC_PORT=8001
+
+# Riva NIM for audio transcription (built into nv-ingest)
+RIVA_ASR_ENDPOINT=http://riva:50051
+RIVA_ASR_MODEL=parakeet-ctc-1.1b-asr
 ```
 
 ---
@@ -579,10 +700,11 @@ dependencies = [
 
 ### Publications (Outgoing)
 
-| Subject | Payload | To |
-|---------|---------|-----|
-| `audio.transcribe` | `AudioTranscribeRequest` | Voice |
-| `image.analyze` | `ImageAnalyzeRequest` | Vision |
+| Subject | Payload | To | When |
+|---------|---------|-----|------|
+| `video.process` | `VideoProcessRequest` | Vision | Video files (MP4, etc.) - not supported by nv-ingest |
+
+**Note**: Audio is handled directly by nv-ingest via Riva NIM - no NATS publish to Voice service.
 
 ---
 
@@ -648,11 +770,11 @@ tests/unit/ingestor/
 | Component | Test Coverage |
 |-----------|---------------|
 | IngestorService | Event handling, routing |
-| DocumentProcessor | nv_ingest_api integration |
-| URLExtractor | HTML parsing |
-| YouTubeExtractor | Transcript fetch |
-| ContentRouter | MIME type routing |
-| EmbedderClient | gRPC communication |
+| DocumentProcessor | nv_ingest_api integration (PDF, DOCX, PPTX, HTML, Audio) |
+| URLExtractor | Live web URL scraping (BeautifulSoup/Selenium) |
+| YouTubeExtractor | YouTube transcript fetch |
+| ContentRouter | MIME type routing, nv-ingest vs custom vs Vision routing |
+| EmbedderClient | gRPC communication, text vs multimodal model selection |
 
 ---
 
@@ -679,9 +801,11 @@ GET :8080/healthz
 | Decision | Accuracy | Reasoning |
 |----------|----------|-----------|
 | Use nv_ingest_api library | 100% | Source code verified - no orchestration deps |
-| pdfium + YOLOX for full extraction | 100% | Text via pdfium, tables/charts via YOLOX NIM |
-| Same architecture as NVIDIA | 100% | Both use pipeline → embedding service |
-| nvidia/llama-nemotron-embed-1b-v2 matches NIM | 100% | Same model weights on HuggingFace |
+| nv-ingest handles PDF, DOCX, PPTX, HTML, Audio | 100% | Verified extractors in source code |
+| Audio via Riva NIM (no Voice service routing) | 100% | Verified in audio_extraction.py |
+| Video routes to Vision (not in nv-ingest) | 100% | No video extractor in nv-ingest source |
+| Strategy 2: structured elements as images | 100% | From NVIDIA vlm-embed.md docs |
+| Two embedding models (text + multimodal) | 100% | From NVIDIA RAG Blueprint |
 | Prefixes required (query:/passage:) | 100% | From official model card |
 | Pooling = mean + L2 normalize | 100% | From official model card |
 
