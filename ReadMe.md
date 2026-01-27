@@ -40,9 +40,6 @@ EchoMind is an **agentic RAG platform** that actually *thinks* before it retriev
 ## Why EchoMind?
 Because teams shouldn’t need a budget to start using AI. EchoMind is **$0, MIT-licensed, and self-hostable** 🆓🏠.
 
-<table>
-<tr>
-<td width="33%" align="center">
 
 ### 🆓 Free. Forever.
 
