@@ -40,7 +40,7 @@ flowchart LR
         C4[6. Send NATS]
     end
 
-    subgraph Semantic["Semantic Service"]
+    subgraph Ingestor["Ingestor Service"]
         E1[5. Pick up msg]
         E2[6. Extract + Chunk]
         E3[7. Embed]
@@ -48,14 +48,14 @@ flowchart LR
     end
 
     Orchestrator -->|NATS| Connector
-    Connector -->|NATS| Semantic
+    Connector -->|NATS| Ingestor
 ```
 
 | Action | Responsible Service |
 |--------|---------------------|
 | Set status to `pending` | Orchestrator |
-| Set status to `syncing` | Connector or Semantic |
-| Set status to `active` | Semantic (on success) |
+| Set status to `syncing` | Connector or Ingestor |
+| Set status to `active` | Ingestor (on success) |
 | Set status to `error` | Any service (on failure) |
 
 **Status Values:** See [Proto Definitions](../proto-definitions.md#connectorstatus)
@@ -81,8 +81,8 @@ Query the `connectors` table for rows that need sync:
 
 | Connector Type | Default Refresh | Route To | Behavior |
 |----------------|-----------------|----------|----------|
-| `web` | 7 days | Semantic | Conditional fetch (ETag/Last-Modified) |
-| `file` | One-time | Semantic | Manual upload, no refresh |
+| `web` | 7 days | Ingestor | Conditional fetch (ETag/Last-Modified) |
+| `file` | One-time | Ingestor | Manual upload, no refresh |
 | `onedrive` | 7 days | Connector | Delta API sync (cTag comparison) |
 | `google_drive` | 7 days | Connector | Changes API sync (md5Checksum) |
 | `teams` | 1 day | Connector | Incremental (new messages) |
@@ -95,7 +95,7 @@ Query the `connectors` table for rows that need sync:
 
 The orchestrator triggers syncs based on time intervals. **Change detection happens in downstream services** (Connector/Semantic) to avoid unnecessary processing.
 
-### Web Pages (Semantic Service)
+### Web Pages (Ingestor Service)
 
 Web pages use HTTP conditional requests:
 
@@ -207,7 +207,7 @@ for item in response.json().get("value", []):
         download_to_minio(item_id)
 ```
 
-### File Upload (Semantic Service)
+### File Upload (Ingestor Service)
 
 Uploaded files use hash-based change detection:
 
@@ -236,7 +236,7 @@ flowchart LR
     end
 
     subgraph Processing["Processing Pipeline"]
-        SEM[Semantic Service]
+        ING[Ingestor Service]
         EMB[Embedder Service]
     end
 
@@ -248,14 +248,14 @@ flowchart LR
     OD -->|Download| FILE
     WEB -->|Download| FILE
 
-    FILE --> SEM
-    SEM --> EMB
+    FILE --> ING
+    ING --> EMB
     EMB --> DEL
 ```
 
 **Flow:**
 1. **Download**: Connector downloads file to MinIO (temp bucket)
-2. **Process**: Semantic extracts content, Embedder creates vectors
+2. **Process**: Ingestor extracts content (nv-ingest), Embedder creates vectors
 3. **Store**: Vectors stored in Qdrant, metadata in PostgreSQL
 4. **Delete**: Physical file deleted from MinIO
 
@@ -284,8 +284,8 @@ stateDiagram-v2
 
     [*] --> ACTIVE: New connector
     ACTIVE --> PENDING: Orchestrator sets
-    PENDING --> SYNCING: Connector/Semantic sets
-    SYNCING --> ACTIVE: Success (Semantic)
+    PENDING --> SYNCING: Connector/Ingestor sets
+    SYNCING --> ACTIVE: Success (Ingestor)
     SYNCING --> ERROR: Failure (any service)
     ERROR --> PENDING: Retry (Orchestrator)
     ACTIVE --> DISABLED: User disables
@@ -324,7 +324,7 @@ flowchart TB
     end
 
     subgraph Consumers
-        SEMANTIC[Semantic Service]
+        INGESTOR[Ingestor Service]
         CONNECTOR[Connector Service]
     end
 
@@ -332,8 +332,8 @@ flowchart TB
     JOB -->|2. Set status PENDING| CONN
     JOB -->|3. Publish| WEB & FILE & DRIVE & TEAMS
 
-    WEB --> SEMANTIC
-    FILE --> SEMANTIC
+    WEB --> INGESTOR
+    FILE --> INGESTOR
     DRIVE --> CONNECTOR
     TEAMS --> CONNECTOR
 ```
@@ -421,7 +421,7 @@ sequenceDiagram
     participant DB as Database
     participant N as NATS
     participant C as Connector
-    participant S as Semantic
+    participant I as Ingestor
 
     O->>DB: 1. Set status = pending
     O->>N: 2. Publish connector.sync.*
@@ -432,21 +432,21 @@ sequenceDiagram
     C->>C: Fetch from external source
     C->>N: 5. Publish document.process
 
-    N->>S: 6. Consume message
-    S->>S: Extract + Chunk + Embed
-    S->>DB: 7. Set status = active
+    N->>I: 6. Consume message
+    I->>I: Extract (nv-ingest) + Chunk + Embed
+    I->>DB: 7. Set status = active
 ```
 
 ### NATS Subjects
 
 | Subject | Publisher | Consumer | Payload |
 |---------|-----------|----------|---------|
-| `connector.sync.web` | Orchestrator | Semantic | `ConnectorSyncRequest` |
-| `connector.sync.file` | Orchestrator | Semantic | `ConnectorSyncRequest` |
+| `connector.sync.web` | Orchestrator | Ingestor | `ConnectorSyncRequest` |
+| `connector.sync.file` | Orchestrator | Ingestor | `ConnectorSyncRequest` |
 | `connector.sync.onedrive` | Orchestrator | Connector | `ConnectorSyncRequest` |
 | `connector.sync.google_drive` | Orchestrator | Connector | `ConnectorSyncRequest` |
 | `connector.sync.teams` | Orchestrator | Connector | `ConnectorSyncRequest` |
-| `document.process` | Connector | Semantic | `DocumentProcessRequest` |
+| `document.process` | Connector | Ingestor | `DocumentProcessRequest` |
 
 **Note:** The orchestrator does NOT subscribe to any subjects. It only publishes.
 

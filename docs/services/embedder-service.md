@@ -8,9 +8,9 @@
 
 ## What It Does
 
-The Embedder Service **converts text into vector embeddings** using SentenceTransformers:
+The Embedder Service **converts text and images into vector embeddings** using NVIDIA models:
 
-- Receives text chunks from Semantic service
+- Receives text chunks and images from Ingestor service
 - Generates vector embeddings using configured model
 - Stores vectors in Qdrant with metadata
 - Supports batch processing for efficiency
@@ -32,28 +32,28 @@ flowchart TB
     end
 
     subgraph External
-        SEMANTIC[echomind-semantic]
+        INGESTOR[echomind-ingestor]
         QDRANT[(Qdrant)]
     end
 
-    SEMANTIC -->|EmbedRequest| GRPC
+    INGESTOR -->|EmbedRequest| GRPC
     GRPC --> ENCODER
     ENCODER --> CACHE
     ENCODER --> QDRANT_CLIENT
     QDRANT_CLIENT --> QDRANT
-    GRPC -->|EmbedResponse| SEMANTIC
+    GRPC -->|EmbedResponse| INGESTOR
 ```
 
 ### Embedding Flow
 
 ```mermaid
 sequenceDiagram
-    participant S as Semantic
+    participant I as Ingestor
     participant E as Embedder
     participant M as Model Cache
     participant Q as Qdrant
 
-    S->>E: EmbedRequest (chunks, model, collection)
+    I->>E: EmbedRequest (chunks, model, collection)
 
     E->>M: Get model
     alt Model in cache
@@ -67,7 +67,7 @@ sequenceDiagram
     E->>Q: Upsert points with payloads
     Q-->>E: OK
 
-    E-->>S: EmbedResponse (success)
+    E-->>I: EmbedResponse (success)
 ```
 
 ---
@@ -161,7 +161,7 @@ See [Proto Definitions](../proto-definitions.md#embedrequest--embedresponse)
 
 | Direction | Protocol | Peer |
 |-----------|----------|------|
-| Incoming | gRPC | echomind-semantic |
+| Incoming | gRPC | echomind-ingestor |
 | Outgoing | Qdrant client | Qdrant |
 
 ---
@@ -373,5 +373,6 @@ class TestSentenceEncoder:
 
 - [Proto Definitions](../proto-definitions.md) - Message schemas
 - [Architecture](../architecture.md) - System overview
-- [Semantic Service](./semantic-service.md) - Sends EmbedRequest
-- [SentenceTransformers](https://www.sbert.net/) - Embedding library
+- [Ingestor Service](./ingestor-service.md) - Sends EmbedRequest
+- [NVIDIA Embedding Models](https://huggingface.co/nvidia/llama-3.2-nv-embedqa-1b-v2) - Text embedding
+- [NVIDIA VLM Embedding](https://huggingface.co/nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1) - Multimodal embedding

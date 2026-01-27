@@ -59,12 +59,14 @@ The Ingestor Service handles **multimodal content extraction and chunking** usin
 
 **Accuracy: 100%** - Directly from nv-ingest README.md lines 47-66.
 
-### NOT Supported by nv-ingest (requires custom extractors in Ingestor)
+### NOT Supported by nv-ingest (handled by Connector - TBD)
 
-| Type | Status | Custom Extractor Needed |
-|------|--------|------------------------|
-| **YouTube URLs** | ❌ Not in nv-ingest | `youtube_transcript_api` |
-| **Live Web URLs** | ❌ Only HTML files, no scraping | BeautifulSoup/Selenium |
+| Type | Handled By | Flow |
+|------|------------|------|
+| **YouTube URLs** | Connector (TBD) | Connector downloads MP4 (yt-dlp) → MinIO → Ingestor processes via nv-ingest |
+| **Live Web URLs** | Connector (TBD) | Connector converts to PDF (Puppeteer) → MinIO → Ingestor processes via nv-ingest |
+
+**Note:** Ingestor does NOT need custom extractors for YouTube/Web. Connector fetches and converts to files that nv-ingest supports (mp4, pdf).
 
 ### Processing Pipeline
 
@@ -107,9 +109,9 @@ flowchart TB
             CHUNKER[transform_text_split_and_tokenize]
         end
 
-        subgraph CustomExt["Custom Extractors (not in nv-ingest)"]
-            URL_EXT[URL Scraper<br/>BeautifulSoup/Selenium]
-            YT_EXT[YouTube Extractor<br/>youtube_transcript_api]
+        subgraph ConnectorHandled["Handled by Connector (TBD)"]
+            URL_NOTE[Web URLs → Connector downloads PDF]
+            YT_NOTE[YouTube → Connector downloads MP4]
         end
 
         GRPC_CLIENT[gRPC Client]
@@ -142,11 +144,7 @@ flowchart TB
     ROUTER -->|image| IMAGE_EXT
     ROUTER -->|video| VIDEO_EXT
     ROUTER -->|text| TEXT_EXT
-    ROUTER -->|url| URL_EXT
-    ROUTER -->|youtube| YT_EXT
-
     PDF_EXT & DOCX_EXT & PPTX_EXT & HTML_EXT & AUDIO_EXT & IMAGE_EXT & VIDEO_EXT & TEXT_EXT --> CHUNKER
-    URL_EXT & YT_EXT --> CHUNKER
     CHUNKER --> GRPC_CLIENT
 
     GRPC_CLIENT -->|text chunks| TEXT_MODEL
@@ -241,10 +239,7 @@ flowchart TD
     DETECT -->|image/*| IMAGE[Image]
     DETECT -->|video/*| VIDEO[Video]
     DETECT -->|text/*| TEXT[Text Files]
-    DETECT -->|url http/https| URL[Live URL]
-    DETECT -->|youtube.com| YT[YouTube]
-
-    subgraph NVIngest["nv-ingest library (ALL these handled in Ingestor)"]
+    subgraph NVIngest["nv-ingest library (ALL file types)"]
         PDF --> PDF_EXT[extract_primitives_from_pdf]
         DOCX --> DOCX_EXT[extract_primitives_from_docx]
         PPTX --> PPTX_EXT[extract_primitives_from_pptx]
@@ -255,21 +250,15 @@ flowchart TD
         TEXT --> TEXT_EXT[text extractor]
     end
 
-    subgraph CustomExtractors["Custom Extractors (not in nv-ingest, but still in Ingestor)"]
-        URL --> URL_EXT[BeautifulSoup/Selenium]
-        YT --> YT_EXT[youtube_transcript_api]
-    end
-
     PDF_EXT & DOCX_EXT & PPTX_EXT & HTML_EXT & AUDIO_EXT & IMAGE_EXT & VIDEO_EXT & TEXT_EXT --> CHUNK[nv-ingest chunking]
-    URL_EXT & YT_EXT --> CHUNK
 
     CHUNK --> EMBEDDER[Embedder gRPC]
 ```
 
 **Key Point**:
 - **nv-ingest handles**: PDF, DOCX, PPTX, HTML, Audio, Images, Video (early access), Text files
-- **Custom extractors in Ingestor**: YouTube URLs, Live Web URLs
-- **NO routing to other services** - everything processed in Ingestor!
+- **YouTube/Web URLs**: Handled by Connector (TBD) - downloads MP4/PDF → Ingestor processes the file
+- **NO custom extractors in Ingestor** - all content comes as files from Connector or MinIO
 
 ---
 
@@ -706,11 +695,6 @@ src/ingestor/
 │   ├── router.py               # Content type routing
 │   └── exceptions.py
 │
-├── extractors/                 # Custom extractors (not in nv-ingest)
-│   ├── __init__.py
-│   ├── url.py                  # Live web URL scraping (BeautifulSoup/Selenium)
-│   └── youtube.py              # YouTube transcript (youtube_transcript_api)
-│
 ├── grpc/
 │   └── embedder_client.py      # gRPC client for Embedder
 │
@@ -818,6 +802,73 @@ subscriber = JetStreamEventSubscriber(
 
 ---
 
+## Fault Tolerance & Crash Recovery
+
+### What Happens When Ingestor Crashes Mid-Processing?
+
+1. **Message NOT acknowledged** - `msg.ack_sync()` only called after successful completion
+2. **NATS redelivers** - JetStream's durable consumer redelivers after `ack_wait` timeout (~30s)
+3. **Document reprocessed from scratch** - New container picks up the same message
+
+### Potential Issues on Crash
+
+| What | Risk | Mitigation |
+|------|------|------------|
+| Document status | Stuck at `processing` until retry completes | Retry will update to `completed` or `failed` |
+| Vectors in Qdrant | Duplicates if chunk IDs aren't deterministic | Use deterministic chunk IDs |
+| Temp files | Lost on container restart | Re-downloaded from MinIO |
+
+### Idempotent Processing (REQUIRED)
+
+For safe reprocessing, chunk IDs **MUST** be deterministic:
+
+```python
+# ✅ CORRECT - Deterministic chunk ID
+chunk_id = f"{document_id}_{chunk_index}"
+
+# Qdrant upsert with same ID = overwrite, not duplicate
+qdrant.upsert(
+    collection_name=collection,
+    points=[
+        PointStruct(
+            id=chunk_id,  # Same content → same ID → safe upsert
+            vector=embedding,
+            payload=metadata
+        )
+    ]
+)
+```
+
+```python
+# ❌ WRONG - Random UUID = duplicates on retry
+chunk_id = str(uuid.uuid4())
+```
+
+### Message Handling Pattern
+
+```python
+async def handle_document(msg: Msg):
+    try:
+        # Process document (extraction, chunking, embedding)
+        result = await process_document(msg.data)
+
+        if result.success:
+            await msg.ack_sync()  # Only ACK on full success
+            logger.info(f"✅ Document {result.doc_id} processed")
+        else:
+            await msg.nak()  # NAK = retry later
+            logger.error(f"❌ Document failed, will retry")
+
+    except Exception as e:
+        logger.exception(f"💀 Crash during processing: {e}")
+        await msg.nak()  # NAK = NATS will redeliver
+        # If container dies here, message is still unacked → auto-redeliver
+```
+
+**Bottom line:** NATS handles retry automatically. Deterministic chunk IDs make reprocessing safe.
+
+---
+
 ## Comparison: Old vs New
 
 ```mermaid
@@ -868,9 +919,6 @@ flowchart LR
 tests/unit/ingestor/
 ├── test_ingestor_service.py
 ├── test_document_processor.py
-├── test_extractors/
-│   ├── test_url_extractor.py
-│   └── test_youtube_extractor.py
 ├── test_router.py
 └── test_embedder_client.py
 ```
@@ -879,11 +927,9 @@ tests/unit/ingestor/
 
 | Component | Test Coverage |
 |-----------|---------------|
-| IngestorService | Event handling, routing |
+| IngestorService | Event handling, NATS message processing |
 | DocumentProcessor | nv_ingest_api integration (PDF, DOCX, PPTX, HTML, Audio, Images, Video, Text) |
-| URLExtractor | Live web URL scraping (BeautifulSoup/Selenium) |
-| YouTubeExtractor | YouTube transcript fetch |
-| ContentRouter | MIME type routing, nv-ingest vs custom extractors |
+| ContentRouter | MIME type routing to nv-ingest extractors |
 | EmbedderClient | gRPC communication, text vs multimodal model selection, modality handling |
 
 ---
@@ -915,7 +961,7 @@ GET :8080/healthz
 | Audio via Riva NIM (no Voice service routing) | 100% | `extract_primitives_from_audio()` in source |
 | Images via nv-ingest (no Vision service routing) | 100% | `extract_primitives_from_image()` in source |
 | Video via nv-ingest (early access) | 100% | From README.md: avi, mkv, mov, mp4 supported |
-| YouTube/Live URLs need custom extractors | 100% | Not in nv-ingest - requires web scraping |
+| YouTube/Web URLs handled by Connector (TBD) | 100% | Connector downloads MP4/PDF → Ingestor processes |
 | Strategy 2: structured elements as images | 100% | From NVIDIA vlm-embed.md docs |
 | Two embedding models (text + multimodal) | 100% | From NVIDIA RAG Blueprint |
 | Token limits by modality (2048/8192/10240) | 100% | From NVIDIA NIM API docs |
@@ -926,10 +972,22 @@ GET :8080/healthz
 
 ## References
 
+### Active Services
+- [Connector Service](./connector-service.md) - Fetches from cloud providers, YouTube (TBD), Web (TBD)
+- [Embedder Service](./embedder-service.md) - Vector embedding and Qdrant storage
+- [Orchestrator Service](./orchestrator-service.md) - Triggers sync jobs
+
+### NVIDIA Resources
 - [nv_ingest_api Source Code](../../sample/nv-ingest/api/src/nv_ingest_api/)
 - [NVIDIA RAG Blueprint](https://github.com/NVIDIA-AI-Blueprints/rag)
 - [nvidia/llama-nemotron-embed-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-1b-v2)
 - [NIM API Reference](https://docs.api.nvidia.com/nim/reference/nvidia-llama-3_2-nv-embedqa-1b-v2)
-- [Embedder Service](./embedder-service.md)
+
+### EchoMind Docs
 - [NATS Messaging](../nats-messaging.md)
 - [Proto Definitions](../proto-definitions.md)
+
+### Deprecated Services (Replaced by Ingestor)
+- [Semantic Service](./semantic-service.md) - ⚠️ DEPRECATED
+- [Voice Service](./voice-service.md) - ⚠️ DEPRECATED (audio now via Riva NIM)
+- [Vision Service](./vision-service.md) - ⚠️ DEPRECATED (images/video now via nv-ingest)

@@ -14,8 +14,9 @@ The Connector Service **fetches data from external sources** that require API au
 - **Google Drive** (files, folders, Google Workspace docs → PDF)
 - **Microsoft OneDrive** (files, folders)
 
-**Deferred:**
-- ~~Web~~ - Needs web-to-PDF component (Puppeteer/Playwright research needed)
+**Deferred (TBD):**
+- ~~Web~~ - Needs web-to-PDF component (Puppeteer/Playwright research needed). Downloads page as PDF → Ingestor processes via nv-ingest.
+- ~~YouTube~~ - Download MP4 when possible (yt-dlp research needed). Downloads video → Ingestor processes via nv-ingest (mp4 supported).
 - ~~Microsoft Teams~~ - Future phase
 
 **Not handled by Connector:**
@@ -282,7 +283,11 @@ async def download_file(self, file: DriveFile) -> bytes:
 ## Providers
 
 **Implemented:** Google Drive, OneDrive
-**Deferred:** Teams (future phase)
+
+**Deferred (TBD):**
+- **YouTube** - Download MP4 via yt-dlp
+- **Web** - Convert to PDF via Puppeteer/Playwright
+- **Teams** - Future phase
 
 ### Microsoft OneDrive
 
@@ -385,6 +390,58 @@ class GoogleDriveProvider:
                 content_type=content_type,
                 content_hash=file.md5Checksum,  # Store for future comparison
             )
+```
+
+### YouTube Provider (TBD)
+
+> **Status:** Deferred - Research needed for yt-dlp integration
+
+```python
+class YouTubeProvider:
+    """Download videos from YouTube URLs."""
+
+    async def sync(self, config: dict, state: dict) -> AsyncIterator[Document]:
+        """
+        TBD: Download MP4 from YouTube.
+
+        1. Parse YouTube URL to get video ID
+        2. Use yt-dlp to download MP4 (best quality that fits size limit)
+        3. Upload MP4 to MinIO
+        4. Publish document.process → Ingestor handles via nv-ingest
+
+        Research needed:
+        - yt-dlp Python API vs CLI wrapper
+        - Video quality/size limits
+        - Rate limiting / YouTube ToS compliance
+        - Audio-only option (mp3) for podcasts
+        """
+        raise NotImplementedError("YouTube provider TBD")
+```
+
+### Web Provider (TBD)
+
+> **Status:** Deferred - Research needed for Puppeteer/Playwright integration
+
+```python
+class WebProvider:
+    """Convert web pages to PDF for processing."""
+
+    async def sync(self, config: dict, state: dict) -> AsyncIterator[Document]:
+        """
+        TBD: Convert web URL to PDF.
+
+        1. Render page with Puppeteer/Playwright (handles JS-heavy sites)
+        2. Export as PDF
+        3. Upload PDF to MinIO
+        4. Publish document.process → Ingestor handles via nv-ingest
+
+        Research needed:
+        - Puppeteer vs Playwright (Playwright has better Python support)
+        - Headless browser container (playwright-python docker image)
+        - Cookie/auth handling for authenticated pages
+        - Sitemap crawling for multi-page sites
+        """
+        raise NotImplementedError("Web provider TBD")
 ```
 
 ---
