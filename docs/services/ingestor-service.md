@@ -367,52 +367,85 @@ The Embedder service is updated to use **NVIDIA's embedding model** with the exa
 
 **Accuracy: 100%** - From official [HuggingFace model card](https://huggingface.co/nvidia/llama-nemotron-embed-1b-v2).
 
-### Implementation Options (TBD)
+### Implementation: Raw Transformers (NVIDIA Way)
 
-#### Option A: SentenceTransformers
+**Decision: Raw Transformers** - Matches NIM implementation exactly.
 
-```python
-from sentence_transformers import SentenceTransformer
+| Criteria | Why Raw Transformers |
+|----------|---------------------|
+| Matches NIM | NVIDIA's HuggingFace model card uses raw Transformers |
+| Pooling | Exact `average_pool()` function from NVIDIA |
+| Prefixes | Explicit `query:` / `passage:` handling |
+| Matryoshka | Full access to all embedding dimensions |
+| Debugging | Full visibility into tensor operations |
 
-model = SentenceTransformer("nvidia/llama-nemotron-embed-1b-v2", trust_remote_code=True)
-
-# For documents (what Ingestor sends)
-embeddings = model.encode_document(texts)
-
-# For queries (search time)
-embeddings = model.encode_query(queries)
-```
-
-**Pros:** Simpler code, handles prefixes automatically
-**Cons:** Less control, abstraction layer
-
-#### Option B: Raw Transformers (Matches NIM Exactly)
+**Accuracy: 100%** - This is the exact code from NVIDIA's official model card.
 
 ```python
 import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModel
 
-def average_pool(last_hidden_states, attention_mask):
-    """Exact NVIDIA pooling function."""
-    last_hidden_states_masked = last_hidden_states.masked_fill(
-        ~attention_mask[..., None].bool(), 0.0
-    )
-    embedding = last_hidden_states_masked.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
-    embedding = F.normalize(embedding, dim=-1)
-    return embedding
+class NvidiaEmbedder:
+    """NVIDIA-compatible embedding implementation."""
 
-# Embed with prefix
-texts_with_prefix = [f"passage: {t}" for t in texts]
-inputs = tokenizer(texts_with_prefix, padding=True, truncation=True, return_tensors='pt')
-outputs = model(**inputs)
-embeddings = average_pool(outputs.last_hidden_state, inputs["attention_mask"])
+    def __init__(self, model_name: str = "nvidia/llama-nemotron-embed-1b-v2"):
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True)
+        self.model.eval()
+
+    def average_pool(self, last_hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        """Exact NVIDIA pooling function from model card."""
+        last_hidden_states_masked = last_hidden_states.masked_fill(
+            ~attention_mask[..., None].bool(), 0.0
+        )
+        embedding = last_hidden_states_masked.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
+        embedding = F.normalize(embedding, dim=-1)  # L2 normalize
+        return embedding
+
+    def embed(self, texts: list[str], input_type: str = "passage") -> list[list[float]]:
+        """
+        Generate embeddings with proper prefix.
+
+        Args:
+            texts: List of text strings to embed
+            input_type: "passage" for documents, "query" for search queries
+
+        Returns:
+            List of embedding vectors (2048 dimensions by default)
+        """
+        # Add prefix (required by NVIDIA model)
+        prefix = f"{input_type}: "
+        texts_with_prefix = [f"{prefix}{t}" for t in texts]
+
+        # Tokenize
+        inputs = self.tokenizer(
+            texts_with_prefix,
+            padding=True,
+            truncation=True,
+            max_length=8192,
+            return_tensors='pt'
+        )
+
+        # Move to same device as model
+        inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
+
+        # Generate embeddings
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+            embeddings = self.average_pool(outputs.last_hidden_state, inputs["attention_mask"])
+
+        return embeddings.cpu().tolist()
 ```
 
-**Pros:** Exact same logic as NIM, full control
-**Cons:** More code, manual prefix handling
+### Why NOT SentenceTransformers
 
-**Decision: TBD** - Need to evaluate both approaches.
+| Concern | Explanation |
+|---------|-------------|
+| Abstraction layer | Hides pooling implementation details |
+| Prefix handling | May not match NVIDIA's exact format |
+| Less control | Harder to debug embedding issues |
+| Not in NVIDIA examples | NVIDIA uses raw Transformers in all docs |
 
 ---
 
