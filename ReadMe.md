@@ -46,7 +46,7 @@ Because teams shouldn’t need a budget to start using AI. EchoMind is **$0, MIT
 
 **MIT Licensed. $0. No strings attached.**
 
-From a solo dev to a Fortune 500—EchoMind stays free.  
+From startups to Fortune 500—EchoMind stays free.  
 No usage limits. No “enterprise” paywalls. No vendor lock-in. 🔓
 
 
