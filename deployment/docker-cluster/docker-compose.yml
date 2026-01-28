@@ -359,12 +359,14 @@ services:
     environment:
       - EMBEDDER_QDRANT_HOST=qdrant
       - EMBEDDER_QDRANT_PORT=6333
+    # Healthcheck: NVIDIA embedding model (1B params) takes 2-5 minutes to load
+    # on first run (download + initialization). Increase timeouts accordingly.
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
       interval: 30s
       timeout: 10s
-      start_period: 60s
-      retries: 3
+      start_period: 300s  # 5 minutes for model download + load
+      retries: 5
     depends_on:
       qdrant:
         condition: service_healthy
@@ -459,12 +461,14 @@ services:
       - INGESTOR_QDRANT_PORT=6333
       - INGESTOR_EMBEDDER_HOST=embedder
       - INGESTOR_EMBEDDER_PORT=50051
+    # Healthcheck: Ingestor waits for embedder (which loads NVIDIA model).
+    # Allow extra time for the full dependency chain to initialize.
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
       interval: 30s
       timeout: 10s
-      start_period: 120s
-      retries: 3
+      start_period: 180s  # 3 minutes after embedder is ready
+      retries: 5
     depends_on:
       postgres:
         condition: service_healthy
