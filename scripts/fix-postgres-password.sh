@@ -7,14 +7,27 @@
 # ROOT CAUSE: POSTGRES_PASSWORD env var only works on FIRST initialization.
 # If the volume already has data, changing the env var does nothing.
 # You must sync the password inside postgres to match.
+#
+# USAGE: Run from project root:
+#   ./scripts/fix-postgres-password.sh
 
 set -e
 
-# Get the directory where this script is located
+# Get the project root directory (parent of scripts/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR/.."
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+CLUSTER_DIR="$PROJECT_ROOT/deployment/docker-cluster"
+
+# Change to cluster directory where docker-compose.yml and .env are
+cd "$CLUSTER_DIR"
 
 # Source the .env file to get POSTGRES_USER and POSTGRES_PASSWORD
+if [ ! -f ".env" ]; then
+    echo "Error: .env file not found in $CLUSTER_DIR"
+    echo "Copy .env.example to .env and configure it first."
+    exit 1
+fi
+
 source .env
 
 echo "Syncing postgres password to match .env file..."

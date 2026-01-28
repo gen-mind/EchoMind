@@ -88,7 +88,7 @@ services:
   # ===============================================
   # IMPORTANT: POSTGRES_PASSWORD only works on FIRST initialization!
   # If you change the password in .env after the volume exists, run:
-  #   ./scripts/fix-postgres-password.sh
+  #   ../../scripts/fix-postgres-password.sh
   # This syncs the password inside postgres to match .env
   postgres:
     image: postgres:16.4

@@ -200,8 +200,8 @@ If you see "password authentication failed for user echomind":
 
 ```bash
 # The password in the volume doesn't match .env
-# Option 1: Sync password (keeps data)
-./scripts/fix-postgres-password.sh
+# Option 1: Sync password (keeps data) - run from project root
+../../scripts/fix-postgres-password.sh
 
 # Option 2: Reset completely (loses all data)
 ./cluster.sh stop
