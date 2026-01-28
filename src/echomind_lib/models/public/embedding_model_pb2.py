@@ -23,7 +23,7 @@ _sym_db = _symbol_database.Default()
 
 
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
-import common_pb2 as common__pb2
+from echomind_lib.models import common_pb2 as common__pb2
 
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1cpublic/embedding_model.proto\x12\x0f\x65\x63homind.public\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x0c\x63ommon.proto\"\xf6\x01\n\x0e\x45mbeddingModel\x12\n\n\x02id\x18\x01 \x01(\x05\x12\x10\n\x08model_id\x18\x02 \x01(\t\x12\x12\n\nmodel_name\x18\x03 \x01(\t\x12\x17\n\x0fmodel_dimension\x18\x04 \x01(\x05\x12\x15\n\x08\x65ndpoint\x18\x05 \x01(\tH\x00\x88\x01\x01\x12\x11\n\tis_active\x18\x06 \x01(\x08\x12\x31\n\rcreation_date\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0blast_update\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\x0b\n\t_endpoint\"\x80\x01\n\x1b\x43reateEmbeddingModelRequest\x12\x10\n\x08model_id\x18\x01 \x01(\t\x12\x12\n\nmodel_name\x18\x02 \x01(\t\x12\x17\n\x0fmodel_dimension\x18\x03 \x01(\x05\x12\x15\n\x08\x65ndpoint\x18\x04 \x01(\tH\x00\x88\x01\x01\x42\x0b\n\t_endpoint\"N\n\x1bListEmbeddingModelsResponse\x12/\n\x06models\x18\x01 \x03(\x0b\x32\x1f.echomind.public.EmbeddingModel\"Q\n\x1fGetActiveEmbeddingModelResponse\x12.\n\x05model\x18\x01 \x01(\x0b\x32\x1f.echomind.public.EmbeddingModel\"x\n\x1e\x41\x63tivateEmbeddingModelResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x18\n\x10requires_reindex\x18\x03 \x01(\x08\x12\x1a\n\x12\x64ocuments_affected\x18\x04 \x01(\x05\x42\x17Z\x15\x65\x63homind/proto/publicb\x06proto3')
