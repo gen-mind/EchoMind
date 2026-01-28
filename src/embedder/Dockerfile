@@ -22,8 +22,9 @@ COPY embedder /app/src/embedder
 
 # Install dependencies
 # Note: transformers==4.47.1 is required for NVIDIA embedding models
+# Using --retries and --timeout for network resilience
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir \
+    pip install --no-cache-dir --retries 10 --timeout 120 \
     grpcio>=1.60.0 \
     grpcio-tools>=1.60.0 \
     sentence-transformers>=2.2.0 \
