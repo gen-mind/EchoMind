@@ -2,7 +2,7 @@
 
 ## Current Status
 
-### Infrastructure Running (11 Services in Docker Cluster)
+### Infrastructure Running (12 Services in Docker Cluster)
 
 | Service | Container Name | Status | Port | Healthcheck |
 |---------|----------------|--------|------|-------------|
@@ -19,6 +19,7 @@
 | **Orchestrator** | echomind-orchestrator | ✅ Running | 8080 | `/healthz` |
 | **Connector** | echomind-connector | ✅ Running | 8080 | `/healthz` |
 | **Ingestor** | echomind-ingestor | ✅ Running | 8080 | `/healthz` |
+| **Guardian** | echomind-guardian | ✅ Running | 8080 | `/healthz` |
 
 ### Implemented Services (Application)
 
@@ -30,13 +31,13 @@
 | **Orchestrator** | ✅ Complete | 40 tests | APScheduler, NATS publisher, creates ECHOMIND stream |
 | **Connector** | ✅ Complete | 126 tests | Google Drive + OneDrive providers, graceful degradation |
 | **Ingestor** | ✅ Complete | 203 tests | nv-ingest extraction, tokenizer chunking, graceful degradation |
+| **Guardian** | ✅ Complete | 177 tests | DLQ monitoring, rate limiting, multi-alerter support |
 
 ### Not Implemented Services
 
 | Service | Priority | Complexity | Depends On |
 |---------|----------|------------|------------|
-| **Guardian** | Next | Low | NATS DLQ |
-| **Search** | 2nd | Very High | Everything |
+| **Search** | Next | Very High | Everything |
 
 ### Deprecated Services (Replaced by Ingestor)
 
@@ -60,13 +61,20 @@
 - `connector.sync.*` - Connector sync triggers
 - `document.process` - Document processing requests
 
+**Stream Name:** `ECHOMIND_DLQ` (created by Orchestrator on startup)
+
+**Subjects:**
+- `$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ECHOMIND.>` - Max delivery advisories
+- `$JS.EVENT.ADVISORY.CONSUMER.MSG_TERMINATED.ECHOMIND.>` - Message termination advisories
+
 **Service Dependency Chain (docker-compose):**
 ```
 postgres → migration → api
-         ↘ orchestrator → connector
+         ↘ orchestrator → connector → ingestor
+                       ↘ guardian
 qdrant → embedder
 minio → connector
-nats → orchestrator, connector
+nats → orchestrator, connector, ingestor, guardian
 ```
 
 ---
@@ -252,16 +260,26 @@ async def list(session, filters, pagination) -> list[Model]
 
 ### Phase 4: Monitoring & Search
 
-#### 4.1 Guardian Service
+#### 4.1 Guardian Service ✅ COMPLETED (2026-01-28)
 - Location: `src/guardian/`
 - Protocol: NATS subscriber
 - Port: 8080 (health)
 - Responsibilities:
-  - Monitor DLQ stream
-  - Extract failure metadata
-  - Send alerts (Slack, PagerDuty, email)
+  - Monitor ECHOMIND_DLQ stream for advisory messages
+  - Extract failure metadata (stream seq, consumer, subject)
+  - Rate-limit alerts per subject (configurable)
+  - Send alerts via multiple channels (Slack, PagerDuty, Webhook, Logging)
 - NATS subjects:
-  - Subscribe: `dlq.>`
+  - Subscribe: `$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ECHOMIND.>`
+  - Subscribe: `$JS.EVENT.ADVISORY.CONSUMER.MSG_TERMINATED.ECHOMIND.>`
+
+**Implementation Details:**
+- 177 unit tests (100% pass)
+- mypy: 0 errors
+- ruff: 0 errors
+- Graceful degradation pattern
+- Thread-safe rate limiter
+- Multiple alerter support with async HTTP clients
 
 #### 4.2 Search Service
 - Location: `src/search/`
@@ -378,7 +396,8 @@ services:
 | `connector.sync.web` | Orchestrator | Ingestor |
 | `connector.sync.file` | Orchestrator | Ingestor |
 | `document.process` | Connector | Ingestor |
-| `dlq.>` | NATS DLQ | Guardian |
+| `$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ECHOMIND.>` | NATS JetStream | Guardian |
+| `$JS.EVENT.ADVISORY.CONSUMER.MSG_TERMINATED.ECHOMIND.>` | NATS JetStream | Guardian |
 
 **Deprecated subjects (no longer used):**
 | ~~`audio.transcribe`~~ | ~~Semantic~~ | ~~Voice~~ |
@@ -869,12 +888,12 @@ The 5% uncertainty accounts for:
 6. Phase 2.3: Ingestor Service ✅ (203 tests)
 7. ~~Phase 3.1: Voice Service~~ (deprecated - merged into Ingestor)
 8. ~~Phase 3.2: Vision Service~~ (deprecated - merged into Ingestor)
-9. Phase 4.1: Guardian Service ← **NEXT**
-10. Phase 4.2: Search Service
+9. Phase 4.1: Guardian Service ✅ (177 tests)
+10. Phase 4.2: Search Service ← **NEXT**
 
 **Pipeline order:** Orchestrator → Connector → Ingestor → Embedder → Qdrant
 
-**Total Unit Tests:** 467 (98 API + 40 Orchestrator + 126 Connector + 203 Ingestor)
+**Total Unit Tests:** 644 (98 API + 40 Orchestrator + 126 Connector + 203 Ingestor + 177 Guardian)
 
 ---
 
@@ -1090,6 +1109,7 @@ class ServiceApp:
 **Services Using This Pattern:**
 - `src/ingestor/main.py`
 - `src/connector/main.py`
+- `src/guardian/main.py`
 - `src/api/main.py` (reference implementation)
 
 **Rationale:**
@@ -1097,3 +1117,114 @@ class ServiceApp:
 - Kubernetes can restart containers based on health, not crash loops
 - Messages are preserved in NATS when service is degraded
 - Automatic recovery without manual intervention
+
+---
+
+### Phase 4.1 Evaluation: Guardian Service (2026-01-28) - FINAL
+
+#### Automated Checks (4/4 PASS)
+
+| Check | Command | Status | Result |
+|-------|---------|--------|--------|
+| Unit Tests | `pytest tests/unit/guardian/ -v` | PASS | 177 passed, 0 failed |
+| Test Warnings | `pytest tests/unit/guardian/ -W error` | PASS | 0 warnings |
+| Type Checking | `mypy src/guardian/` | PASS | 0 errors |
+| Linting | `ruff check src/guardian/` | PASS | 0 errors |
+
+#### Rule Compliance (8/8 PASS)
+
+| Rule | Status | Details |
+|------|--------|---------|
+| Type hints on all params/returns | PASS | Verified by mypy 0 errors |
+| Docstrings with Args/Returns/Raises | PASS | All functions documented |
+| Emoji logging | PASS | All logger calls have emoji prefix |
+| Imports from echomind_lib | PASS | Uses db.nats_subscriber, helpers.readiness_probe |
+| No hand-written Pydantic domain models | PASS | Uses GuardianSettings, AlertDetails dataclass |
+| Business logic separation | PASS | main.py delegates to GuardianService, RateLimiter, Alerters |
+| Use `T \| None` not `Optional[T]` | PASS | Modern syntax used |
+| Use built-in generics | PASS | `list`, `dict` not `List`, `Dict` |
+
+#### Code Quality (6/6 PASS)
+
+| Check | Status | Details |
+|-------|--------|---------|
+| No unjustified `# type: ignore` | PASS | All with justification (Pydantic settings) |
+| No `# noqa` | PASS | 0 noqa comments |
+| No suppressed exceptions | PASS | 0 `except: pass` occurrences |
+| No bare except | PASS | All use `Exception as e` |
+| No hardcoded secrets | PASS | Settings from env vars |
+| No TODO comments | PASS | 0 TODOs |
+
+#### Deployment (5/5 PASS)
+
+| Check | Status | Details |
+|-------|--------|---------|
+| Dockerfile exists and builds | PASS | `src/guardian/Dockerfile` - builds successfully |
+| docker-compose.yml | PASS | Service added with correct dependencies |
+| Config file | PASS | `config/guardian/guardian.env` exists |
+| Service starts | PASS | Container starts, both advisory subscriptions active |
+| Health check | PASS | `/healthz` returns `{"status": "healthy"}` |
+
+#### Phase 4.1 Summary
+
+| Category | Pass | Fail |
+|----------|------|------|
+| Automated Checks | 4 | 0 |
+| Rule Compliance | 8 | 0 |
+| Code Quality | 6 | 0 |
+| Deployment | 5 | 0 |
+| **TOTAL** | **23** | **0** |
+
+**Overall Phase 4.1 Status**: **100% PASS** - Ready for Phase 4.2 (Search Service)
+
+#### Files Created
+
+**Service Files (14):**
+- `src/guardian/__init__.py`
+- `src/guardian/config.py` - Pydantic settings with 18 configuration options
+- `src/guardian/main.py` - NATS subscriber with graceful degradation, dual advisory subscriptions
+- `src/guardian/pyproject.toml` - Package definition
+- `src/guardian/Dockerfile`
+- `src/guardian/requirements.txt`
+- `src/guardian/logic/__init__.py`
+- `src/guardian/logic/exceptions.py` - 5 domain exceptions
+- `src/guardian/logic/advisory_parser.py` - NATS advisory JSON parsing
+- `src/guardian/logic/rate_limiter.py` - Thread-safe token bucket rate limiter
+- `src/guardian/logic/guardian_service.py` - Main orchestration service
+- `src/guardian/alerters/__init__.py`
+- `src/guardian/alerters/base.py` - Alerter ABC
+- `src/guardian/alerters/logging_alerter.py` - Logging-based alerter
+- `src/guardian/alerters/slack_alerter.py` - Slack webhook alerter
+- `src/guardian/alerters/pagerduty_alerter.py` - PagerDuty Events API v2 alerter
+- `src/guardian/alerters/webhook_alerter.py` - Generic webhook alerter with HMAC signing
+
+**Config:**
+- `config/guardian/guardian.env`
+
+**Tests (177 total, 8 files):**
+- `tests/unit/guardian/__init__.py`
+- `tests/unit/guardian/test_config.py` - 28 tests
+- `tests/unit/guardian/test_exceptions.py` - 21 tests
+- `tests/unit/guardian/test_advisory_parser.py` - 25 tests
+- `tests/unit/guardian/test_rate_limiter.py` - 24 tests
+- `tests/unit/guardian/test_guardian_service.py` - 17 tests
+- `tests/unit/guardian/test_alerters/test_logging_alerter.py` - 12 tests
+- `tests/unit/guardian/test_alerters/test_slack_alerter.py` - 20 tests
+- `tests/unit/guardian/test_alerters/test_pagerduty_alerter.py` - 15 tests
+- `tests/unit/guardian/test_alerters/test_webhook_alerter.py` - 15 tests
+
+#### Additional Fixes Made
+
+**Orchestrator Service:**
+- Added `nats_dlq_stream_name` setting to `src/orchestrator/config.py`
+- Updated `src/orchestrator/main.py` to create `ECHOMIND_DLQ` stream on startup
+- DLQ stream captures advisory subjects for MAX_DELIVERIES and MSG_TERMINATED events
+
+**Consumer Name Fix:**
+- Changed consumer naming from `{consumer_name}-{stream_name}` to `{consumer_name}-{advisory_type}`
+- Prevents consumer name conflicts when subscribing to multiple advisory types
+- Uses `max-deliveries` and `msg-terminated` suffixes
+
+**Docker Configuration:**
+- Added `GUARDIAN_VERSION=${ECHOMIND_VERSION}` to `.env.example`
+- Guardian depends on orchestrator (creates DLQ stream first)
