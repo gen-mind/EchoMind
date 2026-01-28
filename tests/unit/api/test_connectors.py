@@ -65,6 +65,16 @@ class MockResult:
     def scalar_one_or_none(self) -> Any | None:
         return self._data[0] if self._data else None
 
+    def scalar(self) -> Any | None:
+        """Return a single scalar value (e.g., count query result)."""
+        if not self._data:
+            return None
+        # For count queries, return the first value
+        first = self._data[0]
+        if isinstance(first, tuple):
+            return len(self._data)  # Number of rows
+        return first
+
 
 class MockDbSession:
     """Mock async database session."""
@@ -137,13 +147,23 @@ class TestConnectorEndpoints:
         return MockDbSession()
 
     @pytest.fixture
+    def mock_nats(self):
+        """Create mock NATS publisher."""
+        from unittest.mock import AsyncMock
+
+        nats = AsyncMock()
+        nats.publish = AsyncMock()
+        return nats
+
+    @pytest.fixture
     def client(
         self,
         mock_db: MockDbSession,
         mock_user: MockTokenUser,
+        mock_nats,
     ) -> TestClient:
         """Create test client with mocked dependencies."""
-        from api.dependencies import get_current_user, get_db_session
+        from api.dependencies import get_current_user, get_db_session, get_nats
         from api.routes.connectors import router
 
         app = FastAPI()
@@ -155,8 +175,12 @@ class TestConnectorEndpoints:
         async def override_user() -> MockTokenUser:
             return mock_user
 
+        def override_nats():
+            return mock_nats
+
         app.dependency_overrides[get_db_session] = override_db
         app.dependency_overrides[get_current_user] = override_user
+        app.dependency_overrides[get_nats] = override_nats
 
         return TestClient(app)
 
@@ -432,7 +456,7 @@ class TestConnectorEndpoints:
             last_sync_at=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
         )
         mock_db.set_single_result(connector)
-        mock_db.set_document_results([(1,), (2,)])  # 2 pending docs
+        mock_db.set_document_results([5])  # 5 pending docs (scalar value)
 
         response = client.get("/connectors/1/status")
 

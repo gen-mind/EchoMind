@@ -2,31 +2,71 @@
 
 ## Current Status
 
-### Implemented Services (Working)
+### Infrastructure Running (11 Services in Docker Cluster)
+
+| Service | Container Name | Status | Port | Healthcheck |
+|---------|----------------|--------|------|-------------|
+| **Traefik** | echomind-traefik | ✅ Running | 80, 443, 8080 | `--ping` |
+| **PostgreSQL** | echomind-postgres | ✅ Running | 5432 | `pg_isready` |
+| **Authentik Server** | echomind-authentik-server | ✅ Running | 9000 | - |
+| **Authentik Worker** | echomind-authentik-worker | ✅ Running | - | - |
+| **Qdrant** | echomind-qdrant | ✅ Running | 6333, 6334 | TCP check |
+| **MinIO** | echomind-minio | ✅ Running | 9000, 9001 | `curl /healthz` |
+| **NATS** | echomind-nats | ✅ Running | 4222, 8222, 6222 | `wget /healthz` |
+| **API** | echomind-api | ✅ Running | 8000 | `/healthz` |
+| **Migration** | echomind-migration | ✅ Completed | - | Exit code 0 |
+| **Embedder** | echomind-embedder | ✅ Running | 50051, 8080 | `/healthz` |
+| **Orchestrator** | echomind-orchestrator | ✅ Running | 8080 | `/healthz` |
+| **Connector** | echomind-connector | ✅ Running | 8080 | `/healthz` |
+
+### Implemented Services (Application)
 
 | Service | Status | Tests | Notes |
 |---------|--------|-------|-------|
-| **API** | Complete | 0 tests | 42 endpoints, FastAPI |
-| **Embedder** | Complete | 3 files | gRPC, GPU support, SentenceTransformers |
-| **Migration** | Complete | 2 files | Alembic runner, no migrations created |
+| **API** | ✅ Complete | 98 tests | 42 endpoints, FastAPI |
+| **Embedder** | ✅ Complete | 3 files | gRPC, GPU support, SentenceTransformers |
+| **Migration** | ✅ Complete | 2 files | Alembic runner |
+| **Orchestrator** | ✅ Complete | 40 tests | APScheduler, NATS publisher, creates ECHOMIND stream |
+| **Connector** | ✅ Complete | 126 tests | Google Drive + OneDrive providers |
 
 ### Not Implemented Services
 
 | Service | Priority | Complexity | Depends On |
 |---------|----------|------------|------------|
-| **Orchestrator** | 1st | Low | CRUD, Migrations |
-| **Connector** | 2nd | High | Orchestrator, Semantic |
-| **Semantic** | 2nd | Medium | Embedder |
-| **Voice** | 3rd | Medium | Semantic |
-| **Vision** | 3rd | Medium | Semantic |
-| **Guardian** | 4th | Low | NATS DLQ |
-| **Search** | 5th | Very High | Everything |
+| **Ingestor** | Next | Medium | Embedder, nv-ingest library |
+| **Guardian** | 3rd | Low | NATS DLQ |
+| **Search** | 4th | Very High | Everything |
 
-### Critical Gaps
+### Deprecated Services (Replaced by Ingestor)
 
-1. **`db/crud/`** is **EMPTY** - No CRUD operations for any of the 11 ORM models
-2. **`migrations/versions/`** is **EMPTY** - No database migrations created
-3. **API has 0 tests** - 42 endpoints completely untested
+| Old Service | Replaced By | Notes |
+|-------------|-------------|-------|
+| ~~Semantic~~ | Ingestor | nv-ingest extraction replaces pymupdf4llm |
+| ~~Voice~~ | Ingestor | Riva NIM handles audio (mp3, wav) |
+| ~~Vision~~ | Ingestor | nv-ingest handles images/video |
+
+**Ingestor Service** uses NVIDIA's `nv_ingest_api` library for unified multimodal extraction:
+- PDF, DOCX, PPTX, HTML → Text extraction with table/chart detection (YOLOX NIM)
+- Audio (mp3, wav) → Transcription via Riva NIM
+- Images (bmp, jpeg, png, tiff) → OCR + VLM embedding
+- Video (avi, mkv, mov, mp4) → Frame extraction (early access)
+
+### NATS JetStream Configuration
+
+**Stream Name:** `ECHOMIND` (created by Orchestrator on startup)
+
+**Subjects:**
+- `connector.sync.*` - Connector sync triggers
+- `document.process` - Document processing requests
+
+**Service Dependency Chain (docker-compose):**
+```
+postgres → migration → api
+         ↘ orchestrator → connector
+qdrant → embedder
+minio → connector
+nats → orchestrator, connector
+```
 
 ---
 
@@ -39,16 +79,17 @@ Orchestrator (trigger)
 Connector (fetch from Teams/OneDrive/GDrive)
        │
        ▼
-Document DB ──────► Semantic (extract/chunk)
+Document DB ──────► Ingestor (nv-ingest extraction)
                           │
           ┌───────────────┼───────────────┐
-          ▼               ▼               ▼
-       Audio          Images/Video      Text
           │               │               │
-          ▼               ▼               │
-       Voice           Vision            │
+       Audio          Images/Video      Documents
+      (Riva NIM)      (YOLOX+VLM)    (PDF/DOCX/PPTX)
           │               │               │
           └───────────────┼───────────────┘
+                          │
+                   Tokenizer Chunking
+                          │
                           ▼
                     Embedder (vectorize)
                           │
@@ -58,6 +99,9 @@ Document DB ──────► Semantic (extract/chunk)
                           ▼
                     Search (retrieve + reason)
 ```
+
+**Note:** The Ingestor service replaces the old Semantic → Voice → Vision routing.
+All content types are now processed within a single service using NVIDIA's nv-ingest library.
 
 ---
 
@@ -170,48 +214,38 @@ async def list(session, filters, pagination) -> list[Model]
 **Note:** `connector.sync.file` goes directly to Semantic (no auth needed).
 `connector.sync.web` requires Connector for web-to-PDF conversion (deferred).
 
-#### 2.3 Semantic Service
-- Location: `src/semantic/`
+#### 2.3 Ingestor Service (replaces Semantic, Voice, Vision)
+- Location: `src/ingestor/`
 - Protocol: NATS subscriber
 - Port: 8080 (health)
 - Responsibilities:
-  - Content extraction (pymupdf4llm, BeautifulSoup)
-  - Text chunking (RecursiveCharacterTextSplitter)
-  - Route audio to Voice service
-  - Route images to Vision service
+  - **Unified extraction** via NVIDIA `nv_ingest_api` library
+  - PDF, DOCX, PPTX, HTML → Text extraction with table/chart detection (YOLOX NIM)
+  - Audio (mp3, wav) → Transcription via Riva NIM
+  - Images (bmp, jpeg, png, tiff) → OCR + VLM embedding
+  - Video (avi, mkv, mov, mp4) → Frame extraction (early access)
+  - **Tokenizer-based chunking** (HuggingFace AutoTokenizer, NOT langchain)
   - Call Embedder via gRPC
 - NATS subjects:
   - Subscribe: `document.process`, `connector.sync.web`, `connector.sync.file`
-  - Publish: `audio.transcribe`, `image.analyze`
+- Models:
+  - Text embedding: `nvidia/llama-3.2-nv-embedqa-1b-v2`
+  - Multimodal VLM: `nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1`
+  - Table/Chart detection: YOLOX NIM
+  - Audio transcription: Riva NIM
+
+**Note:** No more routing to Voice/Vision services - all content types processed within Ingestor.
 
 ---
 
-### Phase 3: Media Processing
+### ~~Phase 3: Media Processing~~ (DEPRECATED)
 
-#### 3.1 Voice Service
-- Location: `src/voice/`
-- Protocol: NATS subscriber
-- Port: 8080 (health)
-- Responsibilities:
-  - Download audio from MinIO
-  - Transcribe with Whisper
-  - Update document content
-- NATS subjects:
-  - Subscribe: `audio.transcribe`
-- Models: whisper-base (default)
-
-#### 3.2 Vision Service
-- Location: `src/vision/`
-- Protocol: NATS subscriber
-- Port: 8080 (health)
-- Responsibilities:
-  - Download image/video from MinIO
-  - Caption with BLIP
-  - Extract text with OCR
-  - Update document content
-- NATS subjects:
-  - Subscribe: `image.analyze`
-- Models: BLIP-base, EasyOCR
+> **Replaced by Ingestor Service (Phase 2.3)**
+>
+> Voice and Vision services are no longer needed. The Ingestor service handles all media types
+> using NVIDIA's nv-ingest library:
+> - Audio → Riva NIM (replaces Whisper)
+> - Images/Video → nv-ingest extraction (replaces BLIP + EasyOCR)
 
 ---
 
@@ -262,21 +296,74 @@ src/{service}/
 └── Dockerfile
 ```
 
+## Docker Compose Service Dependencies
+
+```yaml
+# deployment/docker-cluster/docker-compose.yml
+
+services:
+  api:
+    depends_on:
+      postgres: { condition: service_healthy }
+      qdrant: { condition: service_healthy }
+      migration: { condition: service_completed_successfully }
+      minio: { condition: service_healthy }
+      nats: { condition: service_started }
+      authentik-server: { condition: service_started }
+
+  orchestrator:
+    depends_on:
+      postgres: { condition: service_healthy }
+      migration: { condition: service_completed_successfully }
+      nats: { condition: service_started }
+
+  connector:
+    depends_on:
+      postgres: { condition: service_healthy }
+      migration: { condition: service_completed_successfully }
+      minio: { condition: service_healthy }
+      nats: { condition: service_started }
+      orchestrator: { condition: service_started }  # Creates NATS stream
+
+  embedder:
+    depends_on:
+      qdrant: { condition: service_healthy }
+```
+
+**Key Dependencies:**
+- `migration` runs before all services that need database access
+- `orchestrator` creates NATS stream, so `connector` depends on it
+- `qdrant` must be healthy before `embedder` starts
+
 ---
 
 ## Port Assignments
 
-| Service | Health | API/gRPC | Protocol |
-|---------|--------|----------|----------|
-| api | 8080 | 8080 | HTTP/WebSocket |
-| search | 8080 | 50051 | gRPC |
-| embedder | 8080 | 50051 | gRPC |
-| orchestrator | 8080 | - | - |
-| connector | 8080 | - | - |
-| semantic | 8080 | - | - |
-| voice | 8080 | - | - |
-| vision | 8080 | - | - |
-| guardian | 8080 | - | - |
+| Service | Container | Health | API/gRPC | Protocol |
+|---------|-----------|--------|----------|----------|
+| api | echomind-api | 8000 | 8000 | HTTP/WebSocket |
+| search | echomind-search | 8080 | 50051 | gRPC |
+| embedder | echomind-embedder | 8080 | 50051 | gRPC |
+| orchestrator | echomind-orchestrator | 8080 | - | NATS pub |
+| connector | echomind-connector | 8080 | - | NATS sub/pub |
+| ingestor | echomind-ingestor | 8080 | - | NATS sub |
+| guardian | echomind-guardian | 8080 | - | NATS sub |
+
+**Deprecated (replaced by Ingestor):**
+| ~~semantic~~ | ~~echomind-semantic~~ | - | - | - |
+| ~~voice~~ | ~~echomind-voice~~ | - | - | - |
+| ~~vision~~ | ~~echomind-vision~~ | - | - | - |
+
+## Infrastructure Ports
+
+| Service | Container | Ports | Purpose |
+|---------|-----------|-------|---------|
+| traefik | echomind-traefik | 80, 443, 8080 | Reverse proxy, dashboard |
+| postgres | echomind-postgres | 5432 | Database |
+| authentik | echomind-authentik-server | 9000 | OIDC/Auth |
+| qdrant | echomind-qdrant | 6333, 6334 | Vector DB (HTTP, gRPC) |
+| minio | echomind-minio | 9000, 9001 | Object storage (API, Console) |
+| nats | echomind-nats | 4222, 8222, 6222 | Message bus (Client, Monitor, Cluster) |
 
 ---
 
@@ -287,12 +374,14 @@ src/{service}/
 | `connector.sync.teams` | Orchestrator | Connector |
 | `connector.sync.onedrive` | Orchestrator | Connector |
 | `connector.sync.google_drive` | Orchestrator | Connector |
-| `connector.sync.web` | Orchestrator | Semantic |
-| `connector.sync.file` | Orchestrator | Semantic |
-| `document.process` | Connector | Semantic |
-| `audio.transcribe` | Semantic | Voice |
-| `image.analyze` | Semantic | Vision |
+| `connector.sync.web` | Orchestrator | Ingestor |
+| `connector.sync.file` | Orchestrator | Ingestor |
+| `document.process` | Connector | Ingestor |
 | `dlq.>` | NATS DLQ | Guardian |
+
+**Deprecated subjects (no longer used):**
+| ~~`audio.transcribe`~~ | ~~Semantic~~ | ~~Voice~~ |
+| ~~`image.analyze`~~ | ~~Semantic~~ | ~~Vision~~ |
 
 ---
 
@@ -465,7 +554,7 @@ curl -f http://localhost:8080/healthz
 
 ---
 
-### Phase 2.2 Evaluation: Orchestrator Service (2026-01-26) - FINAL
+### Phase 2.1 Evaluation: Orchestrator Service (2026-01-26) - FINAL
 
 #### Automated Checks (4/4 PASS)
 
@@ -510,7 +599,7 @@ curl -f http://localhost:8080/healthz
 | Service starts | PASS | Container starts without errors |
 | Health check | PASS | `/healthz` returns `{"status": "healthy"}` |
 
-#### Phase 2.2 Summary
+#### Phase 2.1 Summary
 
 | Category | Pass | Fail |
 |----------|------|------|
@@ -520,7 +609,7 @@ curl -f http://localhost:8080/healthz
 | Deployment | 5 | 0 |
 | **TOTAL** | **23** | **0** |
 
-**Overall Phase 2.2 Status**: **100% PASS** - Ready for Phase 2.1 (Semantic Service)
+**Overall Phase 2.1 Status**: **100% PASS** - Ready for Phase 2.2 (Connector Service)
 
 #### Files Created
 
@@ -548,6 +637,108 @@ curl -f http://localhost:8080/healthz
 
 ---
 
+### Phase 2.2 Evaluation: Connector Service (2026-01-27) - FINAL
+
+#### Automated Checks (4/4 PASS)
+
+| Check | Command | Status | Result |
+|-------|---------|--------|--------|
+| Unit Tests | `pytest tests/unit/connector/ -v` | PASS | 126 passed, 0 failed |
+| Test Warnings | `pytest tests/unit/connector/ -W error` | PASS | 0 warnings |
+| Type Checking | `mypy src/connector/` | PASS | 0 errors |
+| Linting | `ruff check src/connector/` | PASS | 0 errors |
+
+#### Rule Compliance (8/8 PASS)
+
+| Rule | Status | Details |
+|------|--------|---------|
+| Type hints on all params/returns | PASS | Verified by mypy 0 errors |
+| Docstrings with Args/Returns/Raises | PASS | All functions documented |
+| Emoji logging | PASS | All logger calls have emoji prefix |
+| Imports from echomind_lib | PASS | Uses db.models, db.minio, db.nats_publisher, db.nats_subscriber |
+| No hand-written Pydantic domain models | PASS | Uses ConnectorSettings, checkpoint models |
+| Business logic separation | PASS | main.py delegates to ConnectorService and providers |
+| Use `T \| None` not `Optional[T]` | PASS | Modern syntax used |
+| Use built-in generics | PASS | `list`, `dict` not `List`, `Dict` |
+
+#### Code Quality (6/6 PASS)
+
+| Check | Status | Details |
+|-------|--------|---------|
+| No unjustified `# type: ignore` | PASS | 3 with justification (Pydantic settings, protobuf imports) |
+| No `# noqa` | PASS | 0 noqa comments |
+| No suppressed exceptions | PASS | 0 `except: pass` occurrences |
+| No bare except | PASS | All use `Exception as e` |
+| No hardcoded secrets | PASS | Settings from env vars |
+| No TODO comments | PASS | 0 TODOs |
+
+#### Deployment (5/5 PASS)
+
+| Check | Status | Details |
+|-------|--------|---------|
+| Dockerfile exists and builds | PASS | `src/connector/Dockerfile` - builds successfully |
+| docker-compose.yml | PASS | Service added with correct dependencies |
+| Config file | PASS | `config/connector/connector.env` exists |
+| Service starts | PASS | Container starts without errors |
+| Health check | PASS | `/healthz` returns healthy |
+
+#### Phase 2.2 Summary
+
+| Category | Pass | Fail |
+|----------|------|------|
+| Automated Checks | 4 | 0 |
+| Rule Compliance | 8 | 0 |
+| Code Quality | 6 | 0 |
+| Deployment | 5 | 0 |
+| **TOTAL** | **23** | **0** |
+
+**Overall Phase 2.2 Status**: **100% PASS** - Ready for Phase 2.3 (Ingestor Service)
+
+#### Files Created
+
+**Service Files:**
+- `src/connector/__init__.py`
+- `src/connector/config.py` - Pydantic settings with 36 configuration options
+- `src/connector/main.py` - NATS subscriber entry point
+- `src/connector/Dockerfile`
+- `src/connector/requirements.txt`
+- `src/connector/logic/__init__.py`
+- `src/connector/logic/exceptions.py` - 10 domain exceptions
+- `src/connector/logic/checkpoint.py` - GoogleDriveCheckpoint, SharePointCheckpoint
+- `src/connector/logic/permissions.py` - ExternalAccess dataclass
+- `src/connector/logic/connector_service.py` - Main orchestration service
+- `src/connector/logic/providers/__init__.py`
+- `src/connector/logic/providers/base.py` - BaseProvider ABC
+- `src/connector/logic/providers/google_drive.py` - Full Google Drive provider
+- `src/connector/logic/providers/onedrive.py` - Full OneDrive provider
+- `src/connector/middleware/__init__.py`
+- `src/connector/middleware/error_handler.py` - Error handling
+
+**Config:**
+- `config/connector/connector.env`
+
+**Tests (126 total):**
+- `tests/unit/connector/__init__.py`
+- `tests/unit/connector/test_config.py` - 20 tests
+- `tests/unit/connector/test_exceptions.py` - 16 tests
+- `tests/unit/connector/test_checkpoint.py` - 24 tests
+- `tests/unit/connector/test_permissions.py` - 15 tests
+- `tests/unit/connector/test_connector_service.py` - 15 tests
+- `tests/unit/connector/test_providers/test_google_drive.py` - 18 tests
+- `tests/unit/connector/test_providers/test_onedrive.py` - 18 tests
+
+#### Additional Fixes Made
+
+**Infrastructure:**
+- Added `nats_stream_name` setting to orchestrator config
+- Orchestrator now creates NATS stream "ECHOMIND" on startup
+- Connector depends on orchestrator in docker-compose (fixes race condition)
+- Updated `.env` and `.env.example` with ORCHESTRATOR_VERSION and CONNECTOR_VERSION
+- NATS upgraded to Alpine image with healthcheck
+- Traefik healthcheck added (--ping endpoint)
+
+---
+
 ## Plan Accuracy
 
 **Plan Accuracy: 95%**
@@ -565,15 +756,17 @@ The 5% uncertainty accounts for:
 1. Phase 1.1: CRUD Operations ✅
 2. Phase 1.2: Database Migrations ✅
 3. Phase 1.3: API Tests ✅
-4. Phase 2.1: Orchestrator Service ✅
-5. Phase 2.2: Connector Service ← **NEXT**
-6. Phase 2.3: Semantic Service
-7. Phase 3.1: Voice Service
-8. Phase 3.2: Vision Service
+4. Phase 2.1: Orchestrator Service ✅ (40 tests)
+5. Phase 2.2: Connector Service ✅ (126 tests)
+6. Phase 2.3: Ingestor Service ← **NEXT**
+7. ~~Phase 3.1: Voice Service~~ (deprecated - merged into Ingestor)
+8. ~~Phase 3.2: Vision Service~~ (deprecated - merged into Ingestor)
 9. Phase 4.1: Guardian Service
 10. Phase 4.2: Search Service
 
-**Pipeline order:** Orchestrator → Connector → Semantic → Embedder → Qdrant
+**Pipeline order:** Orchestrator → Connector → Ingestor → Embedder → Qdrant
+
+**Total Unit Tests:** 264 (98 API + 40 Orchestrator + 126 Connector)
 
 ---
 
@@ -673,3 +866,61 @@ class ExternalAccess:
 - Search filtering - only return docs user has access to
 - Consistent model - same `ExternalAccess` for all providers
 - Every-doc sync ensures permissions always current (no stale access)
+
+### NATS Stream Management (2026-01-27)
+
+**Decision:** Orchestrator creates NATS JetStream stream on startup.
+
+**Stream Configuration:**
+```python
+await publisher.create_stream(
+    name="ECHOMIND",
+    subjects=[
+        "connector.sync.*",
+        "document.process",
+    ],
+)
+```
+
+**Rationale:**
+- Single point of stream creation avoids race conditions
+- Connector depends_on orchestrator ensures stream exists before subscription
+- Idempotent - "already in use" errors are ignored
+
+### Service Healthchecks (2026-01-27)
+
+**Decision:** All infrastructure services must have healthchecks.
+
+| Service | Healthcheck Method |
+|---------|-------------------|
+| Traefik | `traefik healthcheck --ping` (requires `--ping=true`) |
+| PostgreSQL | `pg_isready -U ${POSTGRES_USER}` |
+| Qdrant | TCP check on port 6333 |
+| MinIO | `curl -f http://localhost:9000/minio/health/live` |
+| NATS | `wget --spider -q http://localhost:8222/healthz` (Alpine image) |
+
+**Note:** Changed NATS from `nats:latest` to `nats:alpine` to get `wget` for healthcheck.
+
+**Rationale:**
+- Container orchestrators need healthchecks for restart policies
+- `depends_on: condition: service_healthy` ensures proper startup order
+- Health endpoints provide observability
+
+### Docker Image Versions (2026-01-27)
+
+**Decision:** Per-service version variables with fallback to global version.
+
+**Pattern in `.env`:**
+```bash
+ECHOMIND_VERSION=0.1.0-beta.1
+API_VERSION=${ECHOMIND_VERSION}
+MIGRATION_VERSION=${ECHOMIND_VERSION}
+EMBEDDER_VERSION=${ECHOMIND_VERSION}
+ORCHESTRATOR_VERSION=${ECHOMIND_VERSION}
+CONNECTOR_VERSION=${ECHOMIND_VERSION}
+```
+
+**Rationale:**
+- Individual services can be pinned to specific versions during debugging
+- Global version provides default for all services
+- Consistency with semantic versioning
