@@ -116,7 +116,7 @@ export function EmbeddingModelsPage() {
                   <Input
                     value={newModel.modelId}
                     onChange={(e) => setNewModel({ ...newModel, modelId: e.target.value })}
-                    placeholder="sentence-transformers/all-MiniLM-L6-v2"
+                    placeholder="nvidia/llama-nemotron-embed-1b-v2"
                   />
                   <p className="text-xs text-muted-foreground">
                     HuggingFace model ID or custom model identifier

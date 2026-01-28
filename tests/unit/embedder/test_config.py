@@ -19,7 +19,7 @@ class TestEmbedderSettings:
         assert settings.grpc_port == 50051
         assert settings.grpc_max_workers == 10
         assert settings.health_port == 8080
-        assert settings.model_name == "all-MiniLM-L6-v2"
+        assert settings.model_name == "nvidia/llama-nemotron-embed-1b-v2"
         assert settings.model_cache_limit == 1
         assert settings.batch_size == 32
         assert settings.prefer_gpu is True

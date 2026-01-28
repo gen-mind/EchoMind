@@ -259,7 +259,7 @@ chunks = splitter.split_text(text)
 from langchain_experimental.text_splitter import SemanticChunker
 from sentence_transformers import SentenceTransformer
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
+model = SentenceTransformer("nvidia/llama-nemotron-embed-1b-v2")
 splitter = SemanticChunker(embeddings=model)
 chunks = splitter.split_text(text)
 ```
@@ -341,7 +341,7 @@ EMBEDDER_GRPC_PORT=50051
 SEMANTIC_CHUNK_STRATEGY=character   # character | semantic
 SEMANTIC_CHUNK_SIZE=1000
 SEMANTIC_CHUNK_OVERLAP=200
-SEMANTIC_CHUNK_MODEL=sentence-transformers/all-MiniLM-L6-v2
+SEMANTIC_CHUNK_MODEL=nvidia/llama-nemotron-embed-1b-v2
 
 # Selenium (for JS-heavy pages)
 SELENIUM_REMOTE_URL=http://selenium:4444/wd/hub

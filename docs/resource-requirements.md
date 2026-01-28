@@ -101,45 +101,73 @@ Most cloud providers use **Intel Hyper-Threading Technology** (or AMD equivalent
 
 ### Development Environment
 
-| Service | CPU (Cores) | AWS vCPUs | Azure vCPUs | GCP vCPUs | RAM (GB) | Notes |
-|---------|------------|-----------|-------------|-----------|----------|-------|
-| **Traefik** | 0.25 | 0.5 | 0.5 | 0.5 | 0.25 | Lightweight reverse proxy, minimal load |
-| **PostgreSQL** | 1 | 2 | 2 | 2 | 1 | Shared database (Authentik + API), light usage |
-| **Authentik Server** | 1 | 2 | 2 | 2 | 1 | OIDC authentication server |
-| **Authentik Worker** | 0.5 | 1 | 1 | 1 | 0.5 | Background task processor |
-| **Qdrant** | 1 | 2 | 2 | 2 | 0.5 | Vector database, small dataset (<100K vectors) |
-| **MinIO** | 1 | 2 | 2 | 2 | 1 | Object storage, single node |
-| **NATS** | 0.5 | 1 | 1 | 1 | 0.25 | Message bus with JetStream, low traffic |
-| **EchoMind API** | 1 | 2 | 2 | 2 | 1 | FastAPI application, single worker |
-| **TOTAL** | **6.25** | **12.5** | **12.5** | **12.5** | **5.5** | **Minimum for development** |
+| Service | CPU (Cores) | vCPUs | RAM (GB) | GPU VRAM | Notes |
+|---------|-------------|-------|----------|----------|-------|
+| **Traefik** | 0.25 | 0.5 | 0.25 | - | Reverse proxy |
+| **PostgreSQL** | 1 | 2 | 1 | - | Shared database |
+| **Authentik Server** | 1 | 2 | 1 | - | OIDC server |
+| **Authentik Worker** | 0.5 | 1 | 0.5 | - | Background tasks |
+| **Qdrant** | 1 | 2 | 0.5 | - | Vector DB (<100K) |
+| **MinIO** | 1 | 2 | 1 | - | Object storage |
+| **NATS** | 0.5 | 1 | 0.25 | - | Message bus |
+| **EchoMind API** | 1 | 2 | 1 | - | FastAPI |
+| **Embedder** | 0.5 | 1 | 1 | ~2-4 GB | nvidia/llama-nemotron-embed-1b-v2 (1B) |
+| **Orchestrator** | 0.25 | 0.5 | 0.25 | - | Scheduler |
+| **Connector** | 0.5 | 1 | 0.5 | - | OAuth sync |
+| **Ingestor** | 0.5 | 1 | 1 | 0 | pdfium (CPU) |
+| **Guardian** | 0.25 | 0.5 | 0.25 | - | DLQ monitor |
+| **TOTAL** | **8.25** | **16.5** | **8.5** | **~2-4 GB** | **Default config** |
 
 ### Small Production Environment
 
-| Service | CPU (Cores) | AWS vCPUs | Azure vCPUs | GCP vCPUs | RAM (GB) | Notes |
-|---------|------------|-----------|-------------|-----------|----------|-------|
-| **Traefik** | 0.5 | 1 | 1 | 1 | 0.5 | Handling moderate traffic with TLS |
-| **PostgreSQL** | 2 | 4 | 4 | 4 | 2 | Shared database with connection pooling |
-| **Authentik Server** | 1 | 2 | 2 | 2 | 1.5 | OIDC server, moderate user load |
-| **Authentik Worker** | 1 | 2 | 2 | 2 | 1 | Background processing, email sending |
-| **Qdrant** | 2 | 4 | 4 | 4 | 2 | Vector database, <1M vectors in memory |
-| **MinIO** | 2 | 4 | 4 | 4 | 4 | Object storage with redundancy considerations |
-| **NATS** | 1 | 2 | 2 | 2 | 1 | JetStream enabled, moderate message throughput |
-| **EchoMind API** | 2 | 4 | 4 | 4 | 2 | Multiple Uvicorn workers |
-| **TOTAL** | **11.5** | **23** | **23** | **23** | **14** | **Recommended for small production** |
+| Service | CPU (Cores) | vCPUs | RAM (GB) | GPU VRAM | Notes |
+|---------|-------------|-------|----------|----------|-------|
+| **Traefik** | 0.5 | 1 | 0.5 | - | TLS termination |
+| **PostgreSQL** | 2 | 4 | 2 | - | Connection pooling |
+| **Authentik Server** | 1 | 2 | 1.5 | - | Moderate load |
+| **Authentik Worker** | 1 | 2 | 1 | - | Email, webhooks |
+| **Qdrant** | 2 | 4 | 2 | - | <1M vectors |
+| **MinIO** | 2 | 4 | 4 | - | Redundancy |
+| **NATS** | 1 | 2 | 1 | - | JetStream |
+| **EchoMind API** | 2 | 4 | 2 | - | Multi-worker |
+| **Embedder** | 1 | 2 | 2 | ~2-4 GB | nvidia/llama-nemotron-embed-1b-v2 (1B) |
+| **Orchestrator** | 0.5 | 1 | 0.5 | - | Scheduler |
+| **Connector** | 1 | 2 | 1 | - | Concurrent sync |
+| **Ingestor** | 1 | 2 | 2 | 0 | pdfium (CPU) |
+| **Guardian** | 0.5 | 1 | 0.5 | - | Alerting |
+| **Search** | - | - | - | TBD | Not implemented |
+| **TOTAL** | **15.5** | **31** | **20** | **~2-4 GB** | **Default config** |
 
 ### Production Environment
 
-| Service | CPU (Cores) | AWS vCPUs | Azure vCPUs | GCP vCPUs | RAM (GB) | Notes |
-|---------|------------|-----------|-------------|-----------|----------|-------|
-| **Traefik** | 1 | 2 | 2 | 2 | 1 | High traffic, TLS termination, multiple routes |
-| **PostgreSQL** | 4 | 8 | 8 | 8 | 8 | Optimized for concurrent connections and caching |
-| **Authentik Server** | 2 | 4 | 4 | 4 | 2 | High availability, many concurrent users |
-| **Authentik Worker** | 1 | 2 | 2 | 2 | 1.5 | Processing background tasks reliably |
-| **Qdrant** | 4 | 8 | 8 | 8 | 4-8 | Large vector datasets (1M+ vectors), performance optimized |
-| **MinIO** | 4 | 8 | 8 | 8 | 8 | High-performance object storage |
-| **NATS** | 4 | 8 | 8 | 8 | 8 | JetStream production setup (official recommendation) |
-| **EchoMind API** | 4 | 8 | 8 | 8 | 4 | Load balanced, multiple workers |
-| **TOTAL** | **24** | **48** | **48** | **48** | **36.5-40.5** | **Recommended for production** |
+| Service | CPU (Cores) | vCPUs | RAM (GB) | GPU VRAM | Notes |
+|---------|-------------|-------|----------|----------|-------|
+| **Traefik** | 1 | 2 | 1 | - | High traffic |
+| **PostgreSQL** | 4 | 8 | 8 | - | HA, caching |
+| **Authentik Server** | 2 | 4 | 2 | - | Many users |
+| **Authentik Worker** | 1 | 2 | 1.5 | - | Reliable tasks |
+| **Qdrant** | 4 | 8 | 4-8 | - | 1M+ vectors |
+| **MinIO** | 4 | 8 | 8 | - | High perf |
+| **NATS** | 4 | 8 | 8 | - | JetStream prod |
+| **EchoMind API** | 4 | 8 | 4 | - | Load balanced |
+| **Embedder** | 2 | 4 | 4 | ~2-4 GB | nvidia/llama-nemotron-embed-1b-v2 (1B) |
+| **Orchestrator** | 1 | 2 | 1 | - | Multi-scheduler |
+| **Connector** | 2 | 4 | 2 | - | Multi-provider |
+| **Ingestor** | 2 | 4 | 4 | 0 | pdfium (CPU) |
+| **Guardian** | 1 | 2 | 1 | - | Multi-alerter |
+| **Search** | - | - | - | TBD | Not implemented |
+| **TOTAL** | **32** | **64** | **48-52** | **~2-4 GB** | **Default config** |
+
+### Optional GPU Add-ons
+
+These are **optional** features that require additional GPU VRAM beyond the base embedder:
+
+| Feature | Config Change | GPU VRAM | Source |
+|---------|---------------|----------|--------|
+| YOLOX table detection | `INGESTOR_YOLOX_ENABLED=true` | +4 GB | [NVIDIA NIM](https://build.nvidia.com/nvidia/nv-yolox-page-elements-v1/modelcard) |
+| Riva audio transcription | `INGESTOR_RIVA_ENABLED=true` | +16 GB | [NVIDIA Riva](https://docs.nvidia.com/nim/riva/asr/latest/support-matrix.html) |
+| Local LLM (8B INT4) | Search service config | +5 GB | [vLLM Guide](https://www.digitalocean.com/community/conceptual-articles/vllm-gpu-sizing-configuration-guide) |
+| Local LLM (70B INT4) | Search service config | +35 GB | [HuggingFace](https://huggingface.co/hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4) |
 
 ## Detailed Service Requirements
 
@@ -312,6 +340,145 @@ Most cloud providers use **Intel Hyper-Threading Technology** (or AMD equivalent
 **References:**
 - FastAPI + Uvicorn: 256-512MB per worker
 - Gunicorn recommendation: 2-4 workers for moderate load
+
+## GPU / VRAM Requirements
+
+EchoMind can use GPU acceleration for embedding generation and document extraction. This section covers VRAM requirements based on **actual configured models**.
+
+### VRAM Calculation Formula
+
+```
+VRAM = Parameters × Bytes_per_param × 1.2 (overhead)
+
+Bytes_per_param:
+  - FP32: 4 bytes
+  - FP16: 2 bytes
+  - INT8: 1 byte
+```
+
+**Source:** [LLM VRAM Requirements Explained](https://www.propelrc.com/llm-gpu-vram-requirements-explained/)
+
+---
+
+### 1. Embedder Service
+
+**Config file:** `config/embedder/embedder.env`
+
+#### Default Model: `nvidia/llama-nemotron-embed-1b-v2`
+
+| Metric | Value | Source |
+|--------|-------|--------|
+| Parameters | **1B** | [HuggingFace Model Card](https://huggingface.co/nvidia/llama-nemotron-embed-1b-v2) |
+| Output Dimensions | 2048 | Model card |
+| Max Sequence Length | 512 tokens | Model card |
+| Precision | BF16 | Model card |
+
+**VRAM Calculation:**
+```
+BF16: 1B × 2 bytes × 1.2 = 2.4 GB
++ Batch overhead (batch_size=32): ~500 MB - 1 GB
+```
+
+| Precision | Model VRAM | With Batch | Total |
+|-----------|------------|------------|-------|
+| BF16 | 2.4 GB | +1 GB | **~2-4 GB** |
+
+#### Alternative NVIDIA Models
+
+| Model | Parameters | Dimensions | VRAM | Source |
+|-------|------------|------------|------|--------|
+| `nvidia/llama-nemotron-embed-1b-v2` | 1B | 2048 | ~2-4 GB | [HuggingFace](https://huggingface.co/nvidia/llama-nemotron-embed-1b-v2) |
+| `nvidia/llama-3.2-nv-embedqa-1b-v2` | 1B | 2048 | ~2-4 GB | [HuggingFace](https://huggingface.co/nvidia/llama-3.2-nv-embedqa-1b-v2) |
+| `nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1` | 1B | 2048 | ~2-4 GB | [HuggingFace](https://huggingface.co/nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1) (Multimodal) |
+
+**To change model:** Edit `EMBEDDER_MODEL_NAME` in `config/embedder/embedder.env`
+
+---
+
+### 2. Ingestor Service
+
+**Config file:** `config/ingestor/ingestor.env`
+
+#### Default Configuration (No GPU Required)
+
+```env
+INGESTOR_EXTRACT_METHOD=pdfium       # CPU-based PDF extraction
+INGESTOR_TOKENIZER=meta-llama/Llama-3.2-1B  # Tokenizer only (no weights)
+INGESTOR_YOLOX_ENABLED=false         # NIM disabled
+INGESTOR_RIVA_ENABLED=false          # NIM disabled
+```
+
+**Tokenizer Note:** The `meta-llama/Llama-3.2-1B` tokenizer downloads only tokenizer files (~few MB), NOT the 1B model weights. No GPU needed.
+
+| Component | GPU Required | VRAM |
+|-----------|--------------|------|
+| pdfium extraction | No | 0 |
+| Tokenizer (Llama/GPT2) | No | 0 |
+| **Total (default)** | **No** | **0** |
+
+#### Optional NVIDIA NIMs (if enabled)
+
+| NIM | Config Flag | VRAM | Source |
+|-----|-------------|------|--------|
+| YOLOX Page Elements | `INGESTOR_YOLOX_ENABLED=true` | **~4 GB** | [NVIDIA NIM](https://build.nvidia.com/nvidia/nv-yolox-page-elements-v1/modelcard) |
+| Riva ASR | `INGESTOR_RIVA_ENABLED=true` | **16+ GB** | [NVIDIA Riva Support Matrix](https://docs.nvidia.com/nim/riva/asr/latest/support-matrix.html) |
+
+**Total with all NIMs enabled:** ~20 GB VRAM
+
+---
+
+### 3. Search Service (Not Implemented)
+
+Search service is **not yet implemented**. GPU requirements will depend on architecture decision:
+
+1. **External API** (OpenAI, Anthropic, Azure OpenAI): **0 GB local VRAM**
+2. **Local LLM** (vLLM, TGI): Depends on model choice
+
+#### Reference: LLM VRAM Requirements
+
+| Model | Parameters | FP16 | INT4 (AWQ) | Source |
+|-------|------------|------|------------|--------|
+| Llama 3.1 8B | 8B | ~16 GB | ~5 GB | [HuggingFace](https://huggingface.co/hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4) |
+| Llama 3.1 70B | 70B | ~140 GB | ~35 GB | [HuggingFace](https://huggingface.co/hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4) |
+| Mistral 7B | 7B | ~14 GB | ~4 GB | [vLLM Guide](https://www.digitalocean.com/community/conceptual-articles/vllm-gpu-sizing-configuration-guide) |
+
+---
+
+### Summary by Deployment Tier
+
+#### Development (Default Config)
+
+| Service | Model/Config | GPU | VRAM |
+|---------|--------------|-----|------|
+| Embedder | nvidia/llama-nemotron-embed-1b-v2 | Yes | ~2-4 GB (BF16) |
+| Ingestor | pdfium + tokenizer | No | 0 |
+| Search | Not implemented | - | - |
+| **Total** | | **Yes** | **~2-4 GB** |
+
+#### Production (With NIMs + Local LLM)
+
+| Service | Model/Config | GPU | VRAM |
+|---------|--------------|-----|------|
+| Embedder | nvidia/llama-nemotron-embed-1b-v2 | Yes | ~2-4 GB |
+| Ingestor | YOLOX + Riva NIMs | Yes | ~20 GB |
+| Search | Llama 3.1 8B INT4 | Yes | ~5 GB |
+| **Total** | | **Yes** | **~27-29 GB** |
+
+---
+
+### GPU Selection Guide
+
+| GPU | VRAM | Price | Fits |
+|-----|------|-------|------|
+| **RTX 3060** | 12 GB | ~$300 | Embedder + 8B INT4 |
+| **RTX 4070** | 12 GB | ~$550 | Embedder + 8B INT4 |
+| **RTX 4090** | 24 GB | ~$1,600 | Embedder + NIMs (no LLM) |
+| **T4** | 16 GB | $0.35/hr | Embedder only |
+| **L4** | 24 GB | $0.50/hr | Full stack (8B INT4) |
+| **A10G** | 24 GB | $1.00/hr | Full stack (8B INT4) |
+| **A100 40GB** | 40 GB | $3.00/hr | Full stack + 70B INT4 |
+
+---
 
 ## Storage Requirements
 
@@ -688,6 +855,6 @@ Services that scale vertically:
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** January 21, 2026  
+**Document Version:** 2.0
+**Last Updated:** January 28, 2026
 **Author:** EchoMind Team

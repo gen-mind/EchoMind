@@ -10,7 +10,7 @@ import "common.proto";
 // Embedding model configuration
 message EmbeddingModel {
   int32 id = 1;
-  string model_id = 2;      // e.g., "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+  string model_id = 2;      // e.g., "nvidia/llama-nemotron-embed-1b-v2"
   string model_name = 3;    // Display name
   int32 model_dimension = 4; // Vector dimension (e.g., 768)
   optional string endpoint = 5;  // Optional external embedding service URL

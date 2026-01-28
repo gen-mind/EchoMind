@@ -29,8 +29,8 @@ class EmbedderSettings(BaseSettings):
 
     # Model Configuration
     model_name: str = Field(
-        "all-MiniLM-L6-v2",
-        description="SentenceTransformer model name",
+        "nvidia/llama-nemotron-embed-1b-v2",
+        description="NVIDIA embedding model (1B params, 2048 dim, BF16)",
     )
     model_cache_limit: int = Field(
         1,

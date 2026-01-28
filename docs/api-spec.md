@@ -278,9 +278,9 @@ Embedding model configurations (cluster-wide setting).
 ```json
 {
   "id": 1,
-  "name": "Multilingual MPNet",
-  "model_id": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
-  "dimension": 768,
+  "name": "NVIDIA Nemotron Embed",
+  "model_id": "nvidia/llama-nemotron-embed-1b-v2",
+  "dimension": 2048,
   "is_active": true,
   "created_at": "2025-01-15T08:00:00Z"
 }

@@ -169,7 +169,7 @@ Stores embedding model configurations. The active model converts text into vecto
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | `SMALLSERIAL` | Primary key |
-| `model_id` | `VARCHAR` | Model identifier (e.g., `sentence-transformers/paraphrase-multilingual-mpnet-base-v2`) |
+| `model_id` | `VARCHAR` | Model identifier (e.g., `nvidia/llama-nemotron-embed-1b-v2`) |
 | `model_name` | `VARCHAR` | Display name |
 | `model_dimension` | `INTEGER` | Vector dimension (e.g., 768) |
 | `endpoint` | `VARCHAR` | Optional external embedding service URL |

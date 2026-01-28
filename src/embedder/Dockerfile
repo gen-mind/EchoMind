@@ -57,7 +57,8 @@ COPY --from=builder /app/src /app/src
 ENV PYTHONPATH=/app/src
 
 # Pre-download the default model during build (required for fast startup)
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+# NVIDIA embedding model: 1B params, 2048 dim, ~2-4GB VRAM (BF16)
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('nvidia/llama-nemotron-embed-1b-v2')"
 
 # Set offline mode AFTER download to prevent runtime network calls
 ENV HF_HUB_OFFLINE=1

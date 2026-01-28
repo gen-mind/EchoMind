@@ -52,7 +52,7 @@ CREATE TABLE llms (
 -- Embedding model configurations (cluster-wide)
 CREATE TABLE embedding_models (
     id SMALLSERIAL PRIMARY KEY,
-    model_id VARCHAR NOT NULL,                  -- e.g., 'sentence-transformers/paraphrase-multilingual-mpnet-base-v2'
+    model_id VARCHAR NOT NULL,                  -- e.g., 'nvidia/llama-nemotron-embed-1b-v2'
     model_name VARCHAR NOT NULL,                -- Display name
     model_dimension INTEGER NOT NULL,           -- e.g., 768
     endpoint VARCHAR,                           -- Optional: external embedding service URL

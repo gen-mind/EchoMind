@@ -228,8 +228,9 @@ EMBEDDER_GRPC_HOST=0.0.0.0
 EMBEDDER_GRPC_PORT=50051
 
 # Embedding Model
-ECHOMIND_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-mpnet-base-v2
-ECHOMIND_EMBEDDING_DIMENSION=768
+# NVIDIA embedding model: 1B params, 2048 dim, ~2-4GB VRAM (BF16)
+ECHOMIND_EMBEDDING_MODEL=nvidia/llama-nemotron-embed-1b-v2
+ECHOMIND_EMBEDDING_DIMENSION=2048
 
 # Model Cache
 MODEL_CACHE_LIMIT=1          # Max models in memory
@@ -295,7 +296,7 @@ GET :8080/healthz
 {
   "status": "healthy",
   "qdrant": "connected",
-  "model_loaded": "paraphrase-multilingual-mpnet-base-v2",
+  "model_loaded": "nvidia/llama-nemotron-embed-1b-v2",
   "device": "cuda:0"
 }
 ```

@@ -490,8 +490,8 @@ Step  Publisher      Subject                    Consumer       Trigger
 | search | - | - | - |
 | orchestrator | - | - | - |
 | connector | - | - | - |
-| semantic | - | ✓ (semantic chunking) | all-MiniLM-L6-v2 |
-| embedder | - | ✓ (faster encoding) | paraphrase-multilingual-mpnet-base-v2 |
+| semantic | - | ✓ (semantic chunking) | nvidia/llama-nemotron-embed-1b-v2 |
+| embedder | - | ✓ (faster encoding) | nvidia/llama-nemotron-embed-1b-v2 |
 | voice | - | ✓ (10x faster) | Whisper (base/small/medium/large) |
 | vision | - | ✓ (10x faster) | BLIP + EasyOCR |
 | guardian | - | - | - |
@@ -615,8 +615,8 @@ Embedding model is **cluster-wide** and configured via environment variables:
 
 ```bash
 # .env or ConfigMap
-ECHOMIND_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-mpnet-base-v2
-ECHOMIND_EMBEDDING_DIMENSION=768
+ECHOMIND_EMBEDDING_MODEL=nvidia/llama-nemotron-embed-1b-v2
+ECHOMIND_EMBEDDING_DIMENSION=2048
 ```
 
 **Important**: Changing the embedding model requires:
@@ -636,7 +636,7 @@ The semantic service supports configurable chunking strategies:
 SEMANTIC_CHUNK_STRATEGY=character          # character | semantic
 SEMANTIC_CHUNK_SIZE=1000                   # Characters per chunk
 SEMANTIC_CHUNK_OVERLAP=200                 # Overlap between chunks
-SEMANTIC_CHUNK_MODEL=sentence-transformers/all-MiniLM-L6-v2  # For semantic chunking
+SEMANTIC_CHUNK_MODEL=nvidia/llama-nemotron-embed-1b-v2  # For semantic chunking
 ```
 
 | Strategy | Description | Use Case |

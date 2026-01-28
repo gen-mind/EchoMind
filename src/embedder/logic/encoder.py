@@ -27,11 +27,11 @@ class SentenceEncoder:
         # Encode texts
         vectors = SentenceEncoder.encode(
             texts=["Hello world", "How are you?"],
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
+            model_name="nvidia/llama-nemotron-embed-1b-v2"
         )
 
         # Get model dimension
-        dim = SentenceEncoder.get_dimension("sentence-transformers/all-MiniLM-L6-v2")
+        dim = SentenceEncoder.get_dimension("nvidia/llama-nemotron-embed-1b-v2")
     """
 
     _cache_limit: ClassVar[int] = 1
