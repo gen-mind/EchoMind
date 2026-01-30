@@ -330,17 +330,14 @@ build_services() {
         log_step "Building all local services..."
         echo ""
 
-        log_info "Building api..."
-        docker compose -f "$COMPOSE_FILE" build api
-        log_success "api built"
+        # All services with build contexts
+        local services=("api" "migration" "embedder" "orchestrator" "connector" "ingestor" "guardian")
 
-        log_info "Building embedder..."
-        docker compose -f "$COMPOSE_FILE" build embedder
-        log_success "embedder built"
-
-        log_info "Building migration..."
-        docker compose -f "$COMPOSE_FILE" build migration
-        log_success "migration built"
+        for svc in "${services[@]}"; do
+            log_info "Building ${svc}..."
+            docker compose -f "$COMPOSE_FILE" build "$svc"
+            log_success "${svc} built"
+        done
 
         echo ""
         log_success "All local services built!"
