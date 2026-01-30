@@ -21,8 +21,8 @@ ARG VITE_OIDC_REDIRECT_URI
 ARG VITE_OIDC_POST_LOGOUT_REDIRECT_URI
 ARG VITE_OIDC_SCOPE="openid profile email offline_access"
 
-# Build the application
-RUN npm run build
+# Build the application (skip tsc, vite handles it)
+RUN npx vite build
 
 # Production stage with nginx
 FROM nginx:alpine

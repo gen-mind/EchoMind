@@ -6,4 +6,4 @@
 /* eslint-disable */
 
 export * as common from "./index.echomind.common";
-export * as public from "./index.echomind.public";
+export * as publicApi from "./index.echomind.public";
