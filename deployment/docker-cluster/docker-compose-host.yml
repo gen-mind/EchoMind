@@ -1,0 +1,540 @@
+# docker-compose-host.yml
+# Production deployment for demo.echomind.ch
+# Only Traefik exposes public ports (80, 443)
+# All other services are internal-only, routed via Traefik
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH}/postgres
+
+  qdrant_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH}/qdrant
+
+  minio_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH}/minio
+
+  nats_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH}/nats
+
+  portainer_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH}/portainer
+
+services:
+  # ===============================================
+  # Traefik - Reverse Proxy (ONLY PUBLIC PORTS)
+  # ===============================================
+  traefik:
+    image: traefik:3.1.6
+    container_name: echomind-traefik
+    hostname: traefik
+    ports:
+      - "80:80"
+      - "443:443"
+      - "127.0.0.1:8080:8080"  # Dashboard - localhost only (use SSH tunnel)
+    networks:
+      - frontend
+      - backend
+    volumes:
+      - ${DATA_PATH}/traefik/certificates:/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      - "--ping=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--log.level=INFO"
+      # SSL - Let's Encrypt ACME
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@echomind.ch}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      # HTTP to HTTPS redirect
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+    labels:
+      - "traefik.enable=true"
+
+  # ===============================================
+  # PostgreSQL - Shared DB (Authentik + API)
+  # ===============================================
+  postgres:
+    image: postgres:16.4
+    container_name: echomind-postgres
+    hostname: postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - TZ=${TZ:-UTC}
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER}']
+      start_period: 30s
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ${CONFIG_PATH}/postgres/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    restart: unless-stopped
+    networks:
+      - backend
+    # Expose to localhost for PyCharm database connection (via SSH tunnel)
+    ports:
+      - "127.0.0.1:5432:5432"
+    labels:
+      - "traefik.enable=false"
+
+  # ===============================================
+  # Authentik Server - OIDC Provider
+  # ===============================================
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2025.10.3
+    container_name: echomind-authentik-server
+    hostname: authentik-server
+    command: server
+    environment:
+      - AUTHENTIK_POSTGRESQL__HOST=postgres
+      - AUTHENTIK_POSTGRESQL__USER=${POSTGRES_USER}
+      - AUTHENTIK_POSTGRESQL__NAME=${AUTHENTIK_DB_NAME}
+      - AUTHENTIK_POSTGRESQL__PASSWORD=${POSTGRES_PASSWORD}
+      - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY}
+    volumes:
+      - ${DATA_PATH}/authentik/media:/media
+      - ${DATA_PATH}/authentik/custom-templates:/templates
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - frontend
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.authentik.rule=Host(`auth.demo.echomind.ch`)"
+      - "traefik.http.routers.authentik.entrypoints=websecure"
+      - "traefik.http.routers.authentik.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.authentik.middlewares=authentik-cors"
+      - "traefik.http.services.authentik.loadbalancer.server.port=9000"
+      # CORS middleware for OIDC endpoints (required for SPA clients)
+      - "traefik.http.middlewares.authentik-cors.headers.accesscontrolallowmethods=GET,OPTIONS,POST"
+      - "traefik.http.middlewares.authentik-cors.headers.accesscontrolallowheaders=*"
+      - "traefik.http.middlewares.authentik-cors.headers.accesscontrolalloworiginlist=https://demo.echomind.ch,https://api.demo.echomind.ch,http://localhost:5173,http://localhost:3000"
+      - "traefik.http.middlewares.authentik-cors.headers.accesscontrolallowcredentials=true"
+      - "traefik.http.middlewares.authentik-cors.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.authentik-cors.headers.addvaryheader=true"
+
+  # ===============================================
+  # Authentik Worker - Background Tasks
+  # ===============================================
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2025.10.3
+    container_name: echomind-authentik-worker
+    hostname: authentik-worker
+    command: worker
+    environment:
+      - AUTHENTIK_POSTGRESQL__HOST=postgres
+      - AUTHENTIK_POSTGRESQL__USER=${POSTGRES_USER}
+      - AUTHENTIK_POSTGRESQL__NAME=${AUTHENTIK_DB_NAME}
+      - AUTHENTIK_POSTGRESQL__PASSWORD=${POSTGRES_PASSWORD}
+      - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY}
+      - AUTHENTIK_BOOTSTRAP_PASSWORD=${AUTHENTIK_BOOTSTRAP_PASSWORD}
+      - AUTHENTIK_BOOTSTRAP_EMAIL=${AUTHENTIK_BOOTSTRAP_EMAIL:-admin@echomind.local}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_PATH}/authentik/media:/media
+      - ${DATA_PATH}/authentik/custom-templates:/templates
+      - ${DATA_PATH}/authentik/certs:/certs
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - backend
+
+  # ===============================================
+  # Qdrant - Vector Database (NO PUBLIC PORTS)
+  # ===============================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: echomind-qdrant
+    hostname: qdrant
+    # NO ports - internal only, exposed via Traefik
+    volumes:
+      - qdrant_data:/qdrant/storage
+      - ${CONFIG_PATH}/qdrant/production.yaml:/qdrant/config/production.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/6333' || exit 1"]
+      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.qdrant.rule=Host(`qdrant.demo.echomind.ch`)"
+      - "traefik.http.routers.qdrant.entrypoints=websecure"
+      - "traefik.http.routers.qdrant.tls.certresolver=letsencrypt"
+      - "traefik.http.services.qdrant.loadbalancer.server.port=6333"
+
+  # ===============================================
+  # MinIO - Object Storage (NO PUBLIC PORTS)
+  # ===============================================
+  minio:
+    image: minio/minio:latest
+    container_name: echomind-minio
+    hostname: minio
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    # NO ports - internal only, console exposed via Traefik
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - frontend
+      - backend
+    labels:
+      - "traefik.enable=true"
+      # MinIO Console
+      - "traefik.http.routers.minio-console.rule=Host(`minio.demo.echomind.ch`)"
+      - "traefik.http.routers.minio-console.entrypoints=websecure"
+      - "traefik.http.routers.minio-console.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.minio-console.service=minio-console"
+      - "traefik.http.services.minio-console.loadbalancer.server.port=9001"
+      # MinIO API (for S3-compatible access)
+      - "traefik.http.routers.minio-api.rule=Host(`s3.demo.echomind.ch`)"
+      - "traefik.http.routers.minio-api.entrypoints=websecure"
+      - "traefik.http.routers.minio-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.minio-api.service=minio-api"
+      - "traefik.http.services.minio-api.loadbalancer.server.port=9000"
+
+  # ===============================================
+  # NATS - Message Bus (NO PUBLIC PORTS)
+  # ===============================================
+  nats:
+    image: nats:alpine
+    container_name: echomind-nats
+    hostname: nats
+    # NO ports - internal only
+    volumes:
+      - nats_data:/data/nats
+      - ${CONFIG_PATH}/nats/nats-server.conf:/nats-server.conf
+    command:
+      - "--config=/nats-server.conf"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"
+
+  # ===============================================
+  # EchoMind API - FastAPI Application
+  # ===============================================
+  api:
+    image: gsantopaolo/echomind-api:${API_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src
+      dockerfile: api/Dockerfile
+    container_name: echomind-api
+    hostname: api
+    env_file:
+      - ${CONFIG_PATH}/api/api.env
+    environment:
+      - API_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${API_DB_NAME}
+      - API_QDRANT_HOST=qdrant
+      - API_QDRANT_PORT=6333
+      - API_MINIO_ENDPOINT=minio:9000
+      - API_MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - API_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - API_NATS_URL=nats://nats:4222
+      # Auth - issuer must match JWT's 'iss' claim exactly (external URL)
+      - API_AUTH_ISSUER=https://auth.demo.echomind.ch/application/o/echo-mind/
+      - API_AUTH_AUDIENCE=KgfSGS07LFhpniaqeMRKeyydcqy0cQNloCLFZI1f
+      - API_AUTH_JWKS_URL=http://authentik-server:9000/application/o/echo-mind/jwks/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      authentik-server:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - frontend
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.demo.echomind.ch`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.api.loadbalancer.server.port=8000"
+
+  # ===============================================
+  # EchoMind Migration - Database Migrations
+  # ===============================================
+  migration:
+    image: gsantopaolo/echomind-migration:${MIGRATION_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src
+      dockerfile: migration/Dockerfile
+    container_name: echomind-migration
+    hostname: migration
+    env_file:
+      - ${CONFIG_PATH}/migration/migration.env
+    environment:
+      - MIGRATION_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${API_DB_NAME}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"
+
+  # ===============================================
+  # EchoMind Embedder - Text to Vector Embeddings
+  # ===============================================
+  embedder:
+    image: gsantopaolo/echomind-embedder:${EMBEDDER_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src
+      dockerfile: embedder/Dockerfile
+    container_name: echomind-embedder
+    hostname: embedder
+    # NO ports - internal only (gRPC accessed by other services)
+    env_file:
+      - ${CONFIG_PATH}/embedder/embedder.env
+    environment:
+      - EMBEDDER_QDRANT_HOST=qdrant
+      - EMBEDDER_QDRANT_PORT=6333
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      start_period: 300s
+      retries: 5
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"
+
+  # ===============================================
+  # EchoMind Orchestrator - Connector Sync Scheduler
+  # ===============================================
+  orchestrator:
+    image: gsantopaolo/echomind-orchestrator:${ORCHESTRATOR_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src
+      dockerfile: orchestrator/Dockerfile
+    container_name: echomind-orchestrator
+    hostname: orchestrator
+    env_file:
+      - ${CONFIG_PATH}/orchestrator/orchestrator.env
+    environment:
+      - ORCHESTRATOR_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${API_DB_NAME}
+      - ORCHESTRATOR_NATS_URL=nats://nats:4222
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+      nats:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"
+
+  # ===============================================
+  # EchoMind Connector - External Data Source Fetcher
+  # ===============================================
+  connector:
+    image: gsantopaolo/echomind-connector:${CONNECTOR_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src
+      dockerfile: connector/Dockerfile
+    container_name: echomind-connector
+    hostname: connector
+    env_file:
+      - ${CONFIG_PATH}/connector/connector.env
+    environment:
+      - CONNECTOR_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${API_DB_NAME}
+      - CONNECTOR_NATS_URL=nats://nats:4222
+      - CONNECTOR_MINIO_ENDPOINT=minio:9000
+      - CONNECTOR_MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - CONNECTOR_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      orchestrator:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"
+
+  # ===============================================
+  # EchoMind Ingestor - Document Processing Pipeline
+  # ===============================================
+  ingestor:
+    image: gsantopaolo/echomind-ingestor:${INGESTOR_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src
+      dockerfile: ingestor/Dockerfile
+    container_name: echomind-ingestor
+    hostname: ingestor
+    env_file:
+      - ${CONFIG_PATH}/ingestor/ingestor.env
+    environment:
+      - INGESTOR_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${API_DB_NAME}
+      - INGESTOR_NATS_URL=nats://nats:4222
+      - INGESTOR_MINIO_ENDPOINT=minio:9000
+      - INGESTOR_MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - INGESTOR_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - INGESTOR_QDRANT_HOST=qdrant
+      - INGESTOR_QDRANT_PORT=6333
+      - INGESTOR_EMBEDDER_HOST=embedder
+      - INGESTOR_EMBEDDER_PORT=50051
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      start_period: 180s
+      retries: 5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      embedder:
+        condition: service_healthy
+      connector:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"
+
+  # ===============================================
+  # EchoMind Guardian - DLQ Monitoring & Alerting
+  # ===============================================
+  guardian:
+    image: gsantopaolo/echomind-guardian:${GUARDIAN_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src
+      dockerfile: guardian/Dockerfile
+    container_name: echomind-guardian
+    hostname: guardian
+    env_file:
+      - ${CONFIG_PATH}/guardian/guardian.env
+    environment:
+      - GUARDIAN_NATS_URL=nats://nats:4222
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    depends_on:
+      nats:
+        condition: service_healthy
+      orchestrator:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"
+
+  # ===============================================
+  # Portainer - Docker Management UI
+  # ===============================================
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: echomind-portainer
+    hostname: portainer
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.rule=Host(`portainer.demo.echomind.ch`)"
+      - "traefik.http.routers.portainer.entrypoints=websecure"
+      - "traefik.http.routers.portainer.tls.certresolver=letsencrypt"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
