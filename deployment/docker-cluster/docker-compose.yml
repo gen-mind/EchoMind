@@ -520,3 +520,41 @@ services:
       - backend
     labels:
       - "traefik.enable=false"
+
+  # ===============================================
+  # EchoMind Web - React Frontend
+  # ===============================================
+  web:
+    image: gsantopaolo/echomind-web:${WEB_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src/web
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=http://api.localhost/api/v1
+        - VITE_WS_URL=ws://api.localhost
+        - VITE_OIDC_AUTHORITY=${WEB_OIDC_AUTHORITY:-http://auth.localhost/application/o/echomind-web/}
+        - VITE_OIDC_CLIENT_ID=${WEB_OIDC_CLIENT_ID}
+        - VITE_OIDC_REDIRECT_URI=http://localhost/auth/callback
+        - VITE_OIDC_POST_LOGOUT_REDIRECT_URI=http://localhost
+        - VITE_OIDC_SCOPE=openid profile email offline_access
+    container_name: echomind-web
+    hostname: web
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    depends_on:
+      api:
+        condition: service_started
+      authentik-server:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`localhost`) || Host(`web.localhost`)"
+      - "traefik.http.routers.web.entrypoints=web"
+      - "traefik.http.services.web.loadbalancer.server.port=80"

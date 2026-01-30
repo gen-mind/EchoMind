@@ -186,6 +186,10 @@ start_cluster() {
 
     if [ "$MODE" = "host" ]; then
         # Host mode URLs (production)
+        log_info "Application:"
+        echo -e "  ${GREEN}🌐 Web App:${NC}    https://demo.echomind.ch"
+        echo ""
+
         log_info "Services available at:"
         echo -e "  ${GREEN}🔐 Authentik:${NC}  https://auth.demo.echomind.ch"
         echo -e "  ${GREEN}📦 MinIO:${NC}      https://minio.demo.echomind.ch"
@@ -211,6 +215,10 @@ start_cluster() {
         echo ""
     else
         # Local mode URLs (development)
+        log_info "Application:"
+        echo -e "  ${GREEN}🌐 Web App:${NC}    http://localhost"
+        echo ""
+
         log_info "Services available at:"
         echo -e "  ${GREEN}🔐 Authentik:${NC}  http://auth.localhost"
         echo -e "  ${GREEN}📦 MinIO:${NC}      http://minio.localhost"
@@ -331,7 +339,7 @@ build_services() {
         echo ""
 
         # All services with build contexts
-        local services=("api" "migration" "embedder" "orchestrator" "connector" "ingestor" "guardian")
+        local services=("api" "migration" "embedder" "orchestrator" "connector" "ingestor" "guardian" "web")
 
         for svc in "${services[@]}"; do
             log_info "Building ${svc}..."

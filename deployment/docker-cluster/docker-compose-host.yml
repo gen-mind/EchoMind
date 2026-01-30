@@ -538,3 +538,42 @@ services:
       - "traefik.http.routers.portainer.entrypoints=websecure"
       - "traefik.http.routers.portainer.tls.certresolver=letsencrypt"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+
+  # ===============================================
+  # EchoMind Web - React Frontend
+  # ===============================================
+  web:
+    image: gsantopaolo/echomind-web:${WEB_VERSION:-0.1.0-beta.1}
+    build:
+      context: ../../src/web
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=https://api.demo.echomind.ch/api/v1
+        - VITE_WS_URL=wss://api.demo.echomind.ch
+        - VITE_OIDC_AUTHORITY=${WEB_OIDC_AUTHORITY}
+        - VITE_OIDC_CLIENT_ID=${WEB_OIDC_CLIENT_ID}
+        - VITE_OIDC_REDIRECT_URI=https://demo.echomind.ch/auth/callback
+        - VITE_OIDC_POST_LOGOUT_REDIRECT_URI=https://demo.echomind.ch
+        - VITE_OIDC_SCOPE=openid profile email offline_access
+    container_name: echomind-web
+    hostname: web
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    depends_on:
+      api:
+        condition: service_started
+      authentik-server:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`demo.echomind.ch`)"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.routers.web.tls.certresolver=letsencrypt"
+      - "traefik.http.services.web.loadbalancer.server.port=80"
