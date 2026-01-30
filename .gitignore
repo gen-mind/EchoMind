@@ -14,7 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# Python lib folders (but not src/web/src/lib)
+/lib/
 lib64/
 parts/
 sdist/
