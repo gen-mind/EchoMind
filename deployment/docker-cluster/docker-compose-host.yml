@@ -1,5 +1,5 @@
 # docker-compose-host.yml
-# Production deployment for demo.echomind.ch
+# Production deployment - all URLs configured via .env
 # Only Traefik exposes public ports (80, 443)
 # All other services are internal-only, routed via Traefik
 
@@ -81,7 +81,7 @@ services:
       - "--log.level=INFO"
       # SSL - Let's Encrypt ACME
       - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@echomind.ch}"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
       # HTTP to HTTPS redirect
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
@@ -145,7 +145,7 @@ services:
       - backend
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.authentik.rule=Host(`auth.demo.echomind.ch`)"
+      - "traefik.http.routers.authentik.rule=Host(`${AUTHENTIK_DOMAIN}`)"
       - "traefik.http.routers.authentik.entrypoints=websecure"
       - "traefik.http.routers.authentik.tls.certresolver=letsencrypt"
       - "traefik.http.routers.authentik.middlewares=authentik-cors"
@@ -153,7 +153,7 @@ services:
       # CORS middleware for OIDC endpoints (required for SPA clients)
       - "traefik.http.middlewares.authentik-cors.headers.accesscontrolallowmethods=GET,OPTIONS,POST"
       - "traefik.http.middlewares.authentik-cors.headers.accesscontrolallowheaders=*"
-      - "traefik.http.middlewares.authentik-cors.headers.accesscontrolalloworiginlist=https://demo.echomind.ch,https://api.demo.echomind.ch,http://localhost:5173,http://localhost:3000"
+      - "traefik.http.middlewares.authentik-cors.headers.accesscontrolalloworiginlist=${CORS_ORIGINS}"
       - "traefik.http.middlewares.authentik-cors.headers.accesscontrolallowcredentials=true"
       - "traefik.http.middlewares.authentik-cors.headers.accesscontrolmaxage=100"
       - "traefik.http.middlewares.authentik-cors.headers.addvaryheader=true"
@@ -174,7 +174,7 @@ services:
       - AUTHENTIK_POSTGRESQL__PASSWORD=${POSTGRES_PASSWORD}
       - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY}
       - AUTHENTIK_BOOTSTRAP_PASSWORD=${AUTHENTIK_BOOTSTRAP_PASSWORD}
-      - AUTHENTIK_BOOTSTRAP_EMAIL=${AUTHENTIK_BOOTSTRAP_EMAIL:-admin@echomind.local}
+      - AUTHENTIK_BOOTSTRAP_EMAIL=${AUTHENTIK_BOOTSTRAP_EMAIL}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${DATA_PATH}/authentik/media:/media
@@ -208,7 +208,7 @@ services:
       - backend
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.qdrant.rule=Host(`qdrant.demo.echomind.ch`)"
+      - "traefik.http.routers.qdrant.rule=Host(`${QDRANT_DOMAIN}`)"
       - "traefik.http.routers.qdrant.entrypoints=websecure"
       - "traefik.http.routers.qdrant.tls.certresolver=letsencrypt"
       - "traefik.http.services.qdrant.loadbalancer.server.port=6333"
@@ -239,13 +239,13 @@ services:
     labels:
       - "traefik.enable=true"
       # MinIO Console
-      - "traefik.http.routers.minio-console.rule=Host(`minio.demo.echomind.ch`)"
+      - "traefik.http.routers.minio-console.rule=Host(`${MINIO_DOMAIN}`)"
       - "traefik.http.routers.minio-console.entrypoints=websecure"
       - "traefik.http.routers.minio-console.tls.certresolver=letsencrypt"
       - "traefik.http.routers.minio-console.service=minio-console"
       - "traefik.http.services.minio-console.loadbalancer.server.port=9001"
       # MinIO API (for S3-compatible access)
-      - "traefik.http.routers.minio-api.rule=Host(`s3.demo.echomind.ch`)"
+      - "traefik.http.routers.minio-api.rule=Host(`${S3_DOMAIN}`)"
       - "traefik.http.routers.minio-api.entrypoints=websecure"
       - "traefik.http.routers.minio-api.tls.certresolver=letsencrypt"
       - "traefik.http.routers.minio-api.service=minio-api"
@@ -319,15 +319,15 @@ services:
       - backend
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.api.rule=Host(`api.demo.echomind.ch`)"
+      - "traefik.http.routers.api.rule=Host(`${API_DOMAIN}`)"
       - "traefik.http.routers.api.entrypoints=websecure"
       - "traefik.http.routers.api.tls.certresolver=letsencrypt"
       - "traefik.http.routers.api.middlewares=api-cors"
       - "traefik.http.services.api.loadbalancer.server.port=8000"
-      # CORS middleware for API (required for SPA at demo.echomind.ch)
+      # CORS middleware for API (required for SPA)
       - "traefik.http.middlewares.api-cors.headers.accesscontrolallowmethods=GET,OPTIONS,PUT,POST,DELETE,PATCH"
       - "traefik.http.middlewares.api-cors.headers.accesscontrolallowheaders=*"
-      - "traefik.http.middlewares.api-cors.headers.accesscontrolalloworiginlist=https://demo.echomind.ch,http://localhost:5173,http://localhost:3000"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolalloworiginlist=${CORS_ORIGINS}"
       - "traefik.http.middlewares.api-cors.headers.accesscontrolallowcredentials=true"
       - "traefik.http.middlewares.api-cors.headers.accesscontrolmaxage=100"
       - "traefik.http.middlewares.api-cors.headers.addvaryheader=true"
@@ -550,7 +550,7 @@ services:
       - frontend
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.portainer.rule=Host(`portainer.demo.echomind.ch`)"
+      - "traefik.http.routers.portainer.rule=Host(`${PORTAINER_DOMAIN}`)"
       - "traefik.http.routers.portainer.entrypoints=websecure"
       - "traefik.http.routers.portainer.tls.certresolver=letsencrypt"
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
@@ -564,13 +564,13 @@ services:
       context: ../../src/web
       dockerfile: Dockerfile
       args:
-        - VITE_API_BASE_URL=https://api.demo.echomind.ch/api/v1
-        - VITE_WS_URL=wss://api.demo.echomind.ch
+        - VITE_API_BASE_URL=${API_URL}/api/v1
+        - VITE_WS_URL=${WS_URL}
         - VITE_OIDC_AUTHORITY=${WEB_OIDC_AUTHORITY}
         - VITE_OIDC_CLIENT_ID=${WEB_OIDC_CLIENT_ID}
-        - VITE_OIDC_REDIRECT_URI=https://demo.echomind.ch/auth/callback
-        - VITE_OIDC_POST_LOGOUT_REDIRECT_URI=https://demo.echomind.ch
-        - VITE_OIDC_SCOPE=openid profile email offline_access
+        - VITE_OIDC_REDIRECT_URI=${WEB_OIDC_REDIRECT_URI}
+        - VITE_OIDC_POST_LOGOUT_REDIRECT_URI=${WEB_OIDC_POST_LOGOUT_REDIRECT_URI}
+        - VITE_OIDC_SCOPE=${WEB_OIDC_SCOPE}
     container_name: echomind-web
     hostname: web
     healthcheck:
@@ -589,7 +589,7 @@ services:
       - frontend
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.web.rule=Host(`demo.echomind.ch`)"
+      - "traefik.http.routers.web.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.web.entrypoints=websecure"
       - "traefik.http.routers.web.tls.certresolver=letsencrypt"
       - "traefik.http.services.web.loadbalancer.server.port=80"

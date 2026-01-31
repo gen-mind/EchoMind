@@ -1,3 +1,7 @@
+# docker-compose.yml
+# Local development - all URLs configured via .env
+# Ports exposed for debugging, no SSL
+
 networks:
   frontend:
     driver: bridge
@@ -11,21 +15,21 @@ volumes:
       type: none
       o: bind
       device: ${DATA_PATH}/postgres
-  
+
   qdrant_data:
     driver: local
     driver_opts:
       type: none
       o: bind
       device: ${DATA_PATH}/qdrant
-  
+
   minio_data:
     driver: local
     driver_opts:
       type: none
       o: bind
       device: ${DATA_PATH}/minio
-  
+
   nats_data:
     driver: local
     driver_opts:
@@ -66,30 +70,12 @@ services:
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--log.level=INFO"
-      
-      # ============================================
-      # PRODUCTION SSL CONFIG (commented for dev)
-      # Uncomment for production deployment
-      # ============================================
-      # - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      # - "--certificatesresolvers.letsencrypt.acme.email=gp@genmind.it"
-      # - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-      # - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
-      # - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
     labels:
       - "traefik.enable=true"
-      # Traefik dashboard (optional, for dev)
-      # - "traefik.http.routers.traefik.rule=Host(`traefik.${DOMAIN}`)"
-      # - "traefik.http.routers.traefik.service=api@internal"
-      # - "traefik.http.routers.traefik.entrypoints=web"
 
   # ===============================================
   # PostgreSQL - Shared DB (Authentik + API)
   # ===============================================
-  # IMPORTANT: POSTGRES_PASSWORD only works on FIRST initialization!
-  # If you change the password in .env after the volume exists, run:
-  #   ../../scripts/fix-postgres-password.sh
-  # This syncs the password inside postgres to match .env
   postgres:
     image: postgres:16.4
     container_name: echomind-postgres
@@ -146,13 +132,10 @@ services:
       # CORS middleware for OIDC endpoints (required for SPA clients)
       - "traefik.http.middlewares.authentik-cors.headers.accesscontrolallowmethods=GET,OPTIONS,POST"
       - "traefik.http.middlewares.authentik-cors.headers.accesscontrolallowheaders=*"
-      - "traefik.http.middlewares.authentik-cors.headers.accesscontrolalloworiginlist=http://localhost:5173,http://localhost:3000"
+      - "traefik.http.middlewares.authentik-cors.headers.accesscontrolalloworiginlist=${CORS_ORIGINS}"
       - "traefik.http.middlewares.authentik-cors.headers.accesscontrolallowcredentials=true"
       - "traefik.http.middlewares.authentik-cors.headers.accesscontrolmaxage=100"
       - "traefik.http.middlewares.authentik-cors.headers.addvaryheader=true"
-      # PRODUCTION: Uncomment for HTTPS
-      # - "traefik.http.routers.authentik.entrypoints=websecure"
-      # - "traefik.http.routers.authentik.tls.certresolver=letsencrypt"
 
   # ===============================================
   # Authentik Worker - Background Tasks
@@ -169,7 +152,7 @@ services:
       - AUTHENTIK_POSTGRESQL__PASSWORD=${POSTGRES_PASSWORD}
       - AUTHENTIK_SECRET_KEY=${AUTHENTIK_SECRET_KEY}
       - AUTHENTIK_BOOTSTRAP_PASSWORD=${AUTHENTIK_BOOTSTRAP_PASSWORD}
-      - AUTHENTIK_BOOTSTRAP_EMAIL=${AUTHENTIK_BOOTSTRAP_EMAIL:-admin@echomind.local}
+      - AUTHENTIK_BOOTSTRAP_EMAIL=${AUTHENTIK_BOOTSTRAP_EMAIL}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${DATA_PATH}/authentik/media:/media
@@ -233,12 +216,9 @@ services:
       - backend
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.minio-console.rule=Host(`minio.${DOMAIN}`)"
+      - "traefik.http.routers.minio-console.rule=Host(`${MINIO_DOMAIN}`)"
       - "traefik.http.routers.minio-console.entrypoints=web"
       - "traefik.http.services.minio-console.loadbalancer.server.port=9001"
-      # PRODUCTION: Uncomment for HTTPS
-      # - "traefik.http.routers.minio-console.entrypoints=websecure"
-      # - "traefik.http.routers.minio-console.tls.certresolver=letsencrypt"
 
   # ===============================================
   # NATS - Message Bus
@@ -289,10 +269,9 @@ services:
       - API_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - API_NATS_URL=nats://nats:4222
       # Auth - issuer must match JWT's 'iss' claim exactly (external URL)
-      # JWKS URL can use internal hostname for network efficiency
-      - API_AUTH_ISSUER=http://auth.localhost/application/o/echo-mind/
-      - API_AUTH_AUDIENCE=KgfSGS07LFhpniaqeMRKeyydcqy0cQNloCLFZI1f
-      - API_AUTH_JWKS_URL=http://authentik-server:9000/application/o/echo-mind/jwks/
+      - API_AUTH_ISSUER=${API_AUTH_ISSUER}
+      - API_AUTH_AUDIENCE=${API_AUTH_AUDIENCE}
+      - API_AUTH_JWKS_URL=${API_AUTH_JWKS_URL}
     depends_on:
       postgres:
         condition: service_healthy
@@ -312,12 +291,17 @@ services:
       - backend
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.api.rule=Host(`api.${DOMAIN}`)"
+      - "traefik.http.routers.api.rule=Host(`${API_DOMAIN}`)"
       - "traefik.http.routers.api.entrypoints=web"
+      - "traefik.http.routers.api.middlewares=api-cors"
       - "traefik.http.services.api.loadbalancer.server.port=8000"
-      # PRODUCTION: Uncomment for HTTPS
-      # - "traefik.http.routers.api.entrypoints=websecure"
-      # - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+      # CORS middleware for API (required for SPA)
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolallowmethods=GET,OPTIONS,PUT,POST,DELETE,PATCH"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolallowheaders=*"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolalloworiginlist=${CORS_ORIGINS}"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolallowcredentials=true"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.api-cors.headers.addvaryheader=true"
 
   # ===============================================
   # EchoMind Migration - Database Migrations
@@ -359,13 +343,11 @@ services:
     environment:
       - EMBEDDER_QDRANT_HOST=qdrant
       - EMBEDDER_QDRANT_PORT=6333
-    # Healthcheck: NVIDIA embedding model (1B params) takes 2-5 minutes to load
-    # on first run (download + initialization). Increase timeouts accordingly.
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
       interval: 30s
       timeout: 10s
-      start_period: 300s  # 5 minutes for model download + load
+      start_period: 300s
       retries: 5
     depends_on:
       qdrant:
@@ -461,13 +443,11 @@ services:
       - INGESTOR_QDRANT_PORT=6333
       - INGESTOR_EMBEDDER_HOST=embedder
       - INGESTOR_EMBEDDER_PORT=50051
-    # Healthcheck: Ingestor waits for embedder (which loads NVIDIA model).
-    # Allow extra time for the full dependency chain to initialize.
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
       interval: 30s
       timeout: 10s
-      start_period: 180s  # 3 minutes after embedder is ready
+      start_period: 180s
       retries: 5
     depends_on:
       postgres:
@@ -530,13 +510,13 @@ services:
       context: ../../src/web
       dockerfile: Dockerfile
       args:
-        - VITE_API_BASE_URL=http://api.localhost/api/v1
-        - VITE_WS_URL=ws://api.localhost
-        - VITE_OIDC_AUTHORITY=${WEB_OIDC_AUTHORITY:-http://auth.localhost/application/o/echomind-web/}
+        - VITE_API_BASE_URL=${API_URL}/api/v1
+        - VITE_WS_URL=${WS_URL}
+        - VITE_OIDC_AUTHORITY=${WEB_OIDC_AUTHORITY}
         - VITE_OIDC_CLIENT_ID=${WEB_OIDC_CLIENT_ID}
-        - VITE_OIDC_REDIRECT_URI=http://localhost/auth/callback
-        - VITE_OIDC_POST_LOGOUT_REDIRECT_URI=http://localhost
-        - VITE_OIDC_SCOPE=openid profile email offline_access
+        - VITE_OIDC_REDIRECT_URI=${WEB_OIDC_REDIRECT_URI}
+        - VITE_OIDC_POST_LOGOUT_REDIRECT_URI=${WEB_OIDC_POST_LOGOUT_REDIRECT_URI}
+        - VITE_OIDC_SCOPE=${WEB_OIDC_SCOPE}
     container_name: echomind-web
     hostname: web
     healthcheck:
@@ -555,6 +535,6 @@ services:
       - frontend
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.web.rule=Host(`localhost`) || Host(`web.localhost`)"
+      - "traefik.http.routers.web.rule=Host(`${DOMAIN}`) || Host(`web.${DOMAIN}`)"
       - "traefik.http.routers.web.entrypoints=web"
       - "traefik.http.services.web.loadbalancer.server.port=80"
