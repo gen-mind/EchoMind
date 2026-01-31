@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ThemeProvider } from '@/components/theme-provider'
-import { AuthProvider, AuthCallback, RequireAuth } from '@/auth'
+import { AuthProvider, AuthCallback, RequireAuth, RequireRole } from '@/auth'
 import { TooltipProvider, Toaster } from '@/components/ui'
 import { MainLayout } from '@/components/layout'
 import { LoginPage } from '@/pages/Login'
@@ -84,11 +84,11 @@ export default function App() {
                   <Route index element={<ChatPage />} />
                   <Route path="/chat/:sessionId" element={<ChatPage />} />
                   <Route path="/documents" element={<DocumentsPage />} />
-                  <Route path="/connectors" element={<ConnectorsPage />} />
-                  <Route path="/embedding-models" element={<EmbeddingModelsPage />} />
-                  <Route path="/llms" element={<LLMsPage />} />
+                  <Route path="/connectors" element={<RequireRole role="admin"><ConnectorsPage /></RequireRole>} />
+                  <Route path="/embedding-models" element={<RequireRole role="admin"><EmbeddingModelsPage /></RequireRole>} />
+                  <Route path="/llms" element={<RequireRole role="admin"><LLMsPage /></RequireRole>} />
                   <Route path="/assistants" element={<AssistantsPage />} />
-                  <Route path="/users" element={<UsersPage />} />
+                  <Route path="/users" element={<RequireRole role="admin"><UsersPage /></RequireRole>} />
                   <Route path="/settings" element={<SettingsPage />} />
                 </Route>
               </Routes>

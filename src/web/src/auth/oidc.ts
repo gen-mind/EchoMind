@@ -27,11 +27,13 @@ const oidcConfig = {
   redirect_uri: import.meta.env.VITE_OIDC_REDIRECT_URI || `${window.location.origin}/auth/callback`,
   post_logout_redirect_uri: import.meta.env.VITE_OIDC_POST_LOGOUT_REDIRECT_URI || window.location.origin,
   response_type: 'code',
-  scope: import.meta.env.VITE_OIDC_SCOPE || 'openid profile email',
-  // Disable silent renew until Authentik has offline_access scope configured
-  // To enable: add offline_access scope in Authentik provider settings
-  automaticSilentRenew: false,
-  userStore: new WebStorageStateStore({ store: window.sessionStorage }),
+  scope: import.meta.env.VITE_OIDC_SCOPE || 'openid profile email offline_access',
+  // Enable automatic silent token renewal
+  automaticSilentRenew: true,
+  // Renew token 60 seconds before expiry
+  accessTokenExpiringNotificationTimeInSeconds: 60,
+  // Use localStorage to persist session across tabs
+  userStore: new WebStorageStateStore({ store: window.localStorage }),
 }
 
 let userManager: UserManager | null = null

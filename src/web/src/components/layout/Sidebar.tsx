@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -15,10 +16,11 @@ import {
   Plus,
   LogOut,
   Layers,
+  LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/components/theme-provider'
-import { useAuth } from '@/auth/AuthProvider'
+import { useAuth, usePermissions } from '@/auth'
 import { chatApi } from '@/api'
 import {
   Button,
@@ -36,14 +38,24 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui'
 
-const navItems = [
+interface NavItem {
+  icon: LucideIcon
+  label: string
+  href: string
+  /** Permission required to see this item (optional) */
+  permission?: string
+  /** Role required to see this item (optional) */
+  role?: string
+}
+
+const navItems: NavItem[] = [
   { icon: MessageSquare, label: 'Chat', href: '/' },
   { icon: FileText, label: 'Documents', href: '/documents' },
-  { icon: Link2, label: 'Connectors', href: '/connectors' },
-  { icon: Layers, label: 'Embeddings', href: '/embedding-models' },
-  { icon: Cpu, label: 'LLMs', href: '/llms' },
+  { icon: Link2, label: 'Connectors', href: '/connectors', role: 'admin' },
+  { icon: Layers, label: 'Embeddings', href: '/embedding-models', role: 'admin' },
+  { icon: Cpu, label: 'LLMs', href: '/llms', role: 'admin' },
   { icon: Bot, label: 'Assistants', href: '/assistants' },
-  { icon: Users, label: 'Users', href: '/users' },
+  { icon: Users, label: 'Users', href: '/users', role: 'admin' },
 ]
 
 interface SidebarProps {
@@ -56,6 +68,22 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
   const navigate = useNavigate()
   const { setTheme, resolvedTheme } = useTheme()
   const { user, logout } = useAuth()
+  const { hasRole, can } = usePermissions()
+
+  // Filter nav items based on user permissions
+  const visibleNavItems = useMemo(() => {
+    return navItems.filter((item) => {
+      // Check role requirement
+      if (item.role && !hasRole(item.role)) {
+        return false
+      }
+      // Check permission requirement
+      if (item.permission && !can(item.permission)) {
+        return false
+      }
+      return true
+    })
+  }, [hasRole, can])
 
   const { data: sessionsData } = useQuery({
     queryKey: ['chat-sessions', { limit: 20 }],
@@ -137,7 +165,7 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
       {/* Navigation */}
       <ScrollArea className="flex-1 px-2 py-2">
         <nav className="space-y-1">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const isActive =
               item.href === '/'
                 ? location.pathname === '/' || location.pathname.startsWith('/chat')
