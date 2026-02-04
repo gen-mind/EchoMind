@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 """
 @File    :   llm_model.py
-@Time    :   2026-02-02 19:39:08
+@Time    :   2026-02-03 01:32:40
 @Desc    :   Generated Pydantic models from protobuf definitions
 """
 
@@ -17,11 +17,9 @@ from typing import List, Optional, Type
 
 class LLMProvider(_Enum):
     LLM_PROVIDER_UNSPECIFIED = 0
-    LLM_PROVIDER_TGI = 1
-    LLM_PROVIDER_VLLM = 2
-    LLM_PROVIDER_OPENAI = 3
-    LLM_PROVIDER_ANTHROPIC = 4
-    LLM_PROVIDER_OLLAMA = 5
+    LLM_PROVIDER_OPENAI_COMPATIBLE = 1
+    LLM_PROVIDER_ANTHROPIC = 2
+    LLM_PROVIDER_ANTHROPIC_TOKEN = 3
 
 
 class LLM(BaseModel):

@@ -8,13 +8,12 @@ import "google/protobuf/timestamp.proto";
 import "common.proto";
 
 // LLM provider types
+// Simplified: TGI/vLLM/OpenAI/Ollama all use OpenAI-compatible API format
 enum LLMProvider {
   LLM_PROVIDER_UNSPECIFIED = 0;
-  LLM_PROVIDER_TGI = 1;        // Text Generation Inference
-  LLM_PROVIDER_VLLM = 2;       // vLLM
-  LLM_PROVIDER_OPENAI = 3;     // OpenAI API
-  LLM_PROVIDER_ANTHROPIC = 4;  // Anthropic API
-  LLM_PROVIDER_OLLAMA = 5;     // Ollama (local dev)
+  LLM_PROVIDER_OPENAI_COMPATIBLE = 1;  // Any OpenAI-compatible API (TGI, vLLM, OpenAI, Ollama, etc.)
+  LLM_PROVIDER_ANTHROPIC = 2;          // Anthropic Messages API (streaming, pay-per-token)
+  LLM_PROVIDER_ANTHROPIC_TOKEN = 3;    // Claude CLI with Max subscription OAuth token
 }
 
 // LLM configuration

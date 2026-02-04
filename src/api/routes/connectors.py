@@ -1,6 +1,7 @@
 """Connector management endpoints with RBAC enforcement."""
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, status
 from pydantic import BaseModel
@@ -10,12 +11,34 @@ from api.dependencies import CurrentUser, DbSession, NatsPublisher
 from api.logic.connector_service import ConnectorService
 from echomind_lib.models.public import (
     Connector,
+    ConnectorScope,
     CreateConnectorRequest,
     ListConnectorsResponse,
     UpdateConnectorRequest,
 )
 
 router = APIRouter()
+
+
+def _scope_to_db_string(scope: "ConnectorScope | None") -> str | None:
+    """
+    Convert ConnectorScope enum to database string.
+
+    Args:
+        scope: The ConnectorScope enum value.
+
+    Returns:
+        Canonical scope string (user, team, org) or None.
+    """
+    if scope is None:
+        return None
+
+    mapping = {
+        ConnectorScope.CONNECTOR_SCOPE_USER: "user",
+        ConnectorScope.CONNECTOR_SCOPE_GROUP: "team",  # GROUP is legacy name for TEAM
+        ConnectorScope.CONNECTOR_SCOPE_ORG: "org",
+    }
+    return mapping.get(scope)  # Returns None for UNSPECIFIED
 
 
 class TriggerSyncResponse(BaseModel):
@@ -117,7 +140,7 @@ async def create_connector(
         user=user,
         config=data.config,
         refresh_freq_minutes=data.refresh_freq_minutes,
-        scope=data.scope.name if data.scope else None,
+        scope=_scope_to_db_string(data.scope),
         scope_id=data.scope_id,
         team_id=team_id,
         trigger_sync=True,
@@ -199,7 +222,7 @@ async def update_connector(
         name=data.name,
         config=data.config,
         refresh_freq_minutes=data.refresh_freq_minutes,
-        scope=data.scope.name if data.scope and hasattr(data.scope, "name") else None,
+        scope=_scope_to_db_string(data.scope),
         scope_id=data.scope_id,
         team_id=team_id,
     )

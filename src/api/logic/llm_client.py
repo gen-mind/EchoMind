@@ -1,8 +1,12 @@
 """
 LLM provider client for chat completion.
 
-Supports multiple providers (OpenAI, Anthropic, Ollama, TGI/vLLM)
-with streaming token generation.
+Supports three provider types:
+- openai-compatible: Any OpenAI-compatible API (TGI, vLLM, OpenAI, Ollama, etc.)
+- anthropic: Anthropic Messages API (streaming, pay-per-token)
+- anthropic-token: Claude CLI with Max subscription OAuth token
+
+Provider names are normalized to handle legacy values from database.
 """
 
 import json
@@ -13,9 +17,65 @@ from typing import Any
 
 import httpx
 
+from api.logic.claude_cli_provider import (
+    ClaudeCliConfig,
+    ClaudeCliError,
+    ClaudeCliProvider,
+    ClaudeCliTimeoutError,
+)
 from api.logic.exceptions import ServiceUnavailableError
 
 logger = logging.getLogger(__name__)
+
+# Provider normalization map (legacy values -> canonical names)
+# Handles both old enum names (LLM_PROVIDER_TGI) and short names (tgi)
+PROVIDER_ALIASES: dict[str, str] = {
+    # OpenAI-compatible providers
+    "openai-compatible": "openai-compatible",
+    "openai_compatible": "openai-compatible",
+    "llm_provider_openai_compatible": "openai-compatible",
+    # Legacy TGI
+    "tgi": "openai-compatible",
+    "llm_provider_tgi": "openai-compatible",
+    # Legacy vLLM
+    "vllm": "openai-compatible",
+    "llm_provider_vllm": "openai-compatible",
+    # Legacy OpenAI
+    "openai": "openai-compatible",
+    "llm_provider_openai": "openai-compatible",
+    # Legacy Ollama
+    "ollama": "openai-compatible",
+    "llm_provider_ollama": "openai-compatible",
+    # Anthropic API
+    "anthropic": "anthropic",
+    "llm_provider_anthropic": "anthropic",
+    # Anthropic Token (Claude CLI)
+    "anthropic-token": "anthropic-token",
+    "anthropic_token": "anthropic-token",
+    "llm_provider_anthropic_token": "anthropic-token",
+}
+
+
+def normalize_provider(provider: str) -> str:
+    """
+    Normalize provider name to canonical form.
+
+    Handles legacy enum names (LLM_PROVIDER_TGI) and short names (tgi).
+
+    Args:
+        provider: Raw provider string from database or API.
+
+    Returns:
+        Canonical provider name: openai-compatible, anthropic, or anthropic-token.
+
+    Raises:
+        ValueError: If provider is not recognized.
+    """
+    normalized = provider.lower().strip()
+    canonical = PROVIDER_ALIASES.get(normalized)
+    if canonical:
+        return canonical
+    raise ValueError(f"Unknown LLM provider: {provider}")
 
 
 @dataclass
@@ -28,6 +88,7 @@ class LLMConfig:
     api_key: str | None
     max_tokens: int
     temperature: float
+    session_key: str | None = None  # For anthropic-token provider session tracking
 
 
 @dataclass
@@ -44,7 +105,8 @@ class LLMClient:
 
     Supports:
     - OpenAI (and compatible APIs like Azure, Anyscale)
-    - Anthropic
+    - Anthropic (API with streaming)
+    - Anthropic Token (Claude CLI with Max subscription, non-streaming)
     - Ollama
     - TGI/vLLM (OpenAI-compatible)
 
@@ -61,6 +123,15 @@ class LLMClient:
         """
         self._timeout = timeout
         self._client: httpx.AsyncClient | None = None
+        self._claude_cli: ClaudeCliProvider | None = None
+
+    def _get_claude_cli_provider(self) -> ClaudeCliProvider:
+        """Get or create Claude CLI provider instance."""
+        if self._claude_cli is None:
+            self._claude_cli = ClaudeCliProvider(
+                config=ClaudeCliConfig(timeout_seconds=int(self._timeout))
+            )
+        return self._claude_cli
 
     async def _ensure_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
@@ -88,18 +159,27 @@ class LLMClient:
 
         Raises:
             ServiceUnavailableError: If LLM service fails.
-        """
-        provider = config.provider.lower()
 
-        if provider in ("openai", "tgi", "vllm", "ollama"):
+        Note:
+            For anthropic-token provider, the full response is yielded at once
+            (no streaming) since Claude CLI does not support streaming output.
+        """
+        try:
+            provider = normalize_provider(config.provider)
+        except ValueError:
+            logger.error("❌ Unsupported LLM provider: %s", config.provider)
+            raise ServiceUnavailableError(f"LLM provider '{config.provider}'")
+
+        if provider == "openai-compatible":
             async for token in self._stream_openai_compatible(config, messages):
                 yield token
         elif provider == "anthropic":
             async for token in self._stream_anthropic(config, messages):
                 yield token
-        else:
-            logger.error("❌ Unsupported LLM provider: %s", provider)
-            raise ServiceUnavailableError(f"LLM provider '{provider}'")
+        elif provider == "anthropic-token":
+            # Non-streaming: yield complete response
+            text = await self._complete_anthropic_token(config, messages)
+            yield text
 
     async def _stream_openai_compatible(
         self,
@@ -243,6 +323,101 @@ class LLMClient:
         except httpx.HTTPError as e:
             logger.error("❌ HTTP error calling Anthropic: %s", e)
             raise ServiceUnavailableError("LLM (anthropic)") from e
+
+    async def _complete_anthropic_token(
+        self,
+        config: LLMConfig,
+        messages: list[ChatMessage],
+    ) -> str:
+        """
+        Complete using Claude CLI with Max subscription OAuth token.
+
+        This method uses the Claude CLI instead of the HTTP API. It does not
+        support streaming - the complete response is returned after execution.
+
+        Args:
+            config: LLM configuration. Requires api_key (OAuth token) and
+                optionally session_key for conversation continuity.
+            messages: Chat messages for context.
+
+        Returns:
+            Complete response text.
+
+        Raises:
+            ServiceUnavailableError: If Claude CLI execution fails.
+        """
+        if not config.api_key:
+            logger.error("❌ anthropic-token provider requires OAuth token in api_key")
+            raise ServiceUnavailableError("LLM (anthropic-token): missing OAuth token")
+
+        # Extract system prompt and user messages
+        system_prompt: str | None = None
+        user_content_parts: list[str] = []
+
+        for msg in messages:
+            if msg.role == "system":
+                system_prompt = msg.content
+            elif msg.role in ("user", "assistant"):
+                # Include conversation context
+                prefix = "User: " if msg.role == "user" else "Assistant: "
+                user_content_parts.append(f"{prefix}{msg.content}")
+
+        # Build the prompt - for continuing conversation, include history
+        # For single message, just use the last user message
+        if len(user_content_parts) <= 2:
+            # Simple case: just the last user message
+            prompt = messages[-1].content if messages else ""
+        else:
+            # Multi-turn: combine into prompt
+            prompt = "\n\n".join(user_content_parts)
+
+        # Generate session key if not provided
+        session_key = config.session_key
+        if not session_key:
+            # Use a hash of endpoint + model as fallback session key
+            # This means sessions won't persist across calls without explicit key
+            import hashlib
+            session_key = hashlib.sha256(
+                f"{config.endpoint}:{config.model_id}".encode()
+            ).hexdigest()[:16]
+
+        logger.info(
+            "🤖 Calling Claude CLI (%s) with session_key=%s",
+            config.model_id,
+            session_key,
+        )
+
+        try:
+            provider = self._get_claude_cli_provider()
+            response = await provider.complete(
+                prompt=prompt,
+                token=config.api_key,
+                session_key=session_key,
+                system_prompt=system_prompt,
+                model=config.model_id,
+            )
+            return response.text
+
+        except ClaudeCliTimeoutError as e:
+            logger.error("❌ Claude CLI timed out: %s", e)
+            raise ServiceUnavailableError("LLM (anthropic-token): timeout") from e
+        except ClaudeCliError as e:
+            logger.error("❌ Claude CLI error: %s", e)
+            raise ServiceUnavailableError(
+                f"LLM (anthropic-token): {e.message[:100]}"
+            ) from e
+
+    def clear_anthropic_token_session(self, session_key: str) -> None:
+        """
+        Clear Claude CLI session for a given session key.
+
+        Call this when a user wants to start a fresh conversation.
+
+        Args:
+            session_key: The session key to clear.
+        """
+        if self._claude_cli:
+            self._claude_cli.clear_session(session_key)
 
     async def close(self) -> None:
         """Close HTTP client."""

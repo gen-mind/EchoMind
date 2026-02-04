@@ -35,10 +35,11 @@ EchoMind is a **Python-only Agentic RAG** platform with multi-step retrieval, to
 ## Critical Rules (Always Apply)
 
 1. **Import from `echomind_lib`** - Never duplicate code across services
-2. **Proto = Source of Truth** - Never hand-write Pydantic models. Regenerate: `make gen-proto`
+2. **Proto = Source of Truth** - Never hand-write Pydantic models. Regenerate: `./scripts/generate_proto.sh`
 3. **Never edit generated code** in `echomind_lib/models/` or `web/src/models/`
 4. **Emoji logging required** - See `.claude/rules/logging.md`
-5. **Unit tests MANDATORY** - All services and web components MUST have unit tests. See `.claude/rules/testing.md`
+5. **Unit tests MANDATORY** - 100% coverage for new code. See `.claude/rules/testing.md`
+6. **FAANG Principal Engineer Quality** - No hacks, no shortcuts, no fake implementations
 
 ---
 
@@ -266,13 +267,13 @@ Video (MP4)     → vision → frame extraction → BLIP → description → sem
 1. Create `src/{name}/` (services go directly under src/)
 2. Import from `echomind_lib`
 3. Define proto in `src/proto/internal/`
-4. Run `make gen-proto`
+4. Run `./scripts/generate_proto.sh`
 5. Add ReadinessProbe
 6. Create Dockerfile
 
-### Add Proto Message
+### Add/Modify Proto Message
 1. Edit `.proto` in `src/proto/`
-2. Run `make gen-proto`
+2. Run `./scripts/generate_proto.sh` (REQUIRED after any proto change)
 3. Import from `echomind_lib.models`
 
 ### Debug
@@ -284,13 +285,42 @@ Video (MP4)     → vision → frame extraction → BLIP → description → sem
 
 ## Code Quality & Testing
 
+### FAANG Principal Engineer Standards
+
+- **No hacks** - Clean, maintainable solutions only
+- **No shortcuts** - Proper abstractions and error handling
+- **No fake implementations** - Every function must be fully implemented
+- **Production-ready** - Code must be deployable as written
+
+### Code Requirements
+
 - **TODO comments** for incomplete code
 - **No unused code** - imports, functions, dependencies
+- **Full type hints** - ALL parameters and return types annotated
+- **Comprehensive docstrings** - Args, Returns, Raises sections
+- **Exception chaining** - Always use `raise ... from e`
+
+### Testing Requirements
+
+- **100% coverage** for all new code
 - **Unit tests REQUIRED** for all new code:
   - Python services: `tests/unit/{service}/test_*.py`
   - Web components: `web/src/**/*.test.ts(x)`
   - Mock all external dependencies (DB, APIs, queues)
-  - Minimum coverage: 70% services, 80% utilities
+
+### Running Tests (MANDATORY before commit)
+
+```bash
+# Python tests (from project root)
+python -m pytest tests/
+
+# Python tests with coverage
+python -m pytest tests/ --cov --cov-report=term-missing
+
+# Web tests (from src/web directory)
+cd src/web && npm run test
+```
+
 - See `.claude/rules/testing.md` for patterns and examples
 
 ---

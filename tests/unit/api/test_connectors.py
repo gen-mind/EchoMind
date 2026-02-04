@@ -26,6 +26,7 @@ class MockConnector:
     user_id: int = 1
     scope: str = "user"
     scope_id: str | None = None
+    team_id: int | None = None
     status: str = "active"
     status_message: str | None = None
     last_sync_at: datetime | None = None
@@ -45,7 +46,7 @@ class MockTokenUser:
     user_name: str = "testuser"
     first_name: str = "Test"
     last_name: str = "User"
-    roles: list[str] = field(default_factory=lambda: ["user"])
+    roles: list[str] = field(default_factory=lambda: ["echomind-allowed"])
     groups: list[str] = field(default_factory=lambda: ["default"])
     external_id: str = "ext-123"
 
@@ -87,6 +88,7 @@ class MockDbSession:
             "count": [],
             "single": [],
             "documents": [],
+            "team_ids": [],  # For team membership queries
         }
 
     def set_list_results(self, results: list[Any]) -> None:
@@ -100,6 +102,10 @@ class MockDbSession:
 
     def set_document_results(self, results: list[Any]) -> None:
         self._query_results["documents"] = results
+
+    def set_team_ids(self, team_ids: list[int]) -> None:
+        """Set team ID results for team membership queries."""
+        self._query_results["team_ids"] = [(tid,) for tid in team_ids]
 
     def add(self, obj: Any) -> None:
         self.added.append(obj)
@@ -115,6 +121,10 @@ class MockDbSession:
 
     async def execute(self, query: Any) -> MockResult:
         query_str = str(query).lower()
+
+        # Team membership queries (for permissions)
+        if "team_members" in query_str or "teams" in query_str:
+            return MockResult(self._query_results["team_ids"])
 
         # Document pending count
         if "documents" in query_str and "pending" in query_str:
@@ -164,9 +174,11 @@ class TestConnectorEndpoints:
     ) -> TestClient:
         """Create test client with mocked dependencies."""
         from api.dependencies import get_current_user, get_db_session, get_nats
+        from api.middleware.error_handler import setup_error_handlers
         from api.routes.connectors import router
 
         app = FastAPI()
+        setup_error_handlers(app)  # Enable error handlers for proper HTTP responses
         app.include_router(router, prefix="/connectors")
 
         async def override_db() -> AsyncGenerator[MockDbSession, None]:
@@ -182,7 +194,7 @@ class TestConnectorEndpoints:
         app.dependency_overrides[get_current_user] = override_user
         app.dependency_overrides[get_nats] = override_nats
 
-        return TestClient(app)
+        return TestClient(app, raise_server_exceptions=False)
 
     def test_list_connectors_empty(
         self,
@@ -271,7 +283,9 @@ class TestConnectorEndpoints:
         response = client.get("/connectors/999")
 
         assert response.status_code == 404
-        assert response.json()["detail"] == "Connector not found"
+        data = response.json()
+        assert data["error"]["code"] == "NOT_FOUND"
+        assert "not found" in data["error"]["message"].lower()
 
     def test_get_connector_other_user(
         self,

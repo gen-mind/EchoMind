@@ -10,6 +10,33 @@ from fastapi.testclient import TestClient
 
 
 @dataclass
+class MockConnector:
+    """Mock connector ORM object for testing.
+
+    Used when document service needs to access connector details.
+    """
+
+    id: int = 1
+    name: str = "Test Connector"
+    type: str = "google_drive"
+    config: dict[str, Any] = field(default_factory=dict)
+    state: dict[str, Any] = field(default_factory=dict)
+    refresh_freq_minutes: int | None = 60
+    user_id: int = 1
+    scope: str = "user"
+    scope_id: str | None = None
+    team_id: int | None = None
+    status: str = "active"
+    status_message: str | None = None
+    last_sync_at: datetime | None = None
+    docs_analyzed: int = 0
+    creation_date: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_update: datetime | None = None
+    user_id_last_update: int | None = None
+    deleted_date: datetime | None = None
+
+
+@dataclass
 class MockDocument:
     """Mock document ORM object for testing."""
 
@@ -29,6 +56,13 @@ class MockDocument:
     creation_date: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     last_update: datetime | None = None
     user_id_last_update: int | None = None
+    # Connector relationship - loaded via selectinload
+    connector: "MockConnector | None" = None
+
+    def __post_init__(self):
+        """Auto-create connector if not provided."""
+        if self.connector is None:
+            self.connector = MockConnector(id=self.connector_id, user_id=1)
 
 
 @dataclass
@@ -68,15 +102,51 @@ class MockDbSession:
         self.added: list[Any] = []
         self.deleted: list[Any] = []
         self._query_results: dict[str, list[Any]] = {
-            "connectors": [],
+            "connector_ids": [],  # For select(ConnectorORM.id) - returns tuples
+            "connector_objects": [],  # For select(ConnectorORM) - returns full objects
             "documents": [],
             "count": [],
             "single": [],
+            "team_ids": [],  # For team queries
         }
         self._call_count = 0
 
+    def set_connector_ids(self, ids: list[int]) -> None:
+        """Set connector ID results for ID-only queries."""
+        self._query_results["connector_ids"] = [(i,) for i in ids]
+
+    def set_connector_objects(self, connectors: list[Any]) -> None:
+        """Set connector object results for full object queries."""
+        self._query_results["connector_objects"] = connectors
+
     def set_connector_results(self, results: list[Any]) -> None:
-        self._query_results["connectors"] = results
+        """Legacy method - sets both IDs and objects from tuples or objects.
+
+        If results are tuples (id, scope, scope_id), extract IDs.
+        If results are objects, use them directly.
+        """
+        if not results:
+            self._query_results["connector_ids"] = []
+            self._query_results["connector_objects"] = []
+            return
+
+        # Check if first item is a tuple
+        if isinstance(results[0], tuple):
+            # Legacy format: (id, scope, scope_id) - convert to proper mocks
+            self._query_results["connector_ids"] = [(r[0],) for r in results]
+            # Create mock connector objects from tuples
+            mock_connectors = []
+            for r in results:
+                mock_connectors.append(MockConnector(
+                    id=r[0],
+                    scope=r[1] if len(r) > 1 else "user",
+                    scope_id=r[2] if len(r) > 2 else None,
+                ))
+            self._query_results["connector_objects"] = mock_connectors
+        else:
+            # Already proper objects
+            self._query_results["connector_ids"] = [(c.id,) for c in results]
+            self._query_results["connector_objects"] = results
 
     def set_document_results(self, results: list[Any]) -> None:
         self._query_results["documents"] = results
@@ -86,6 +156,10 @@ class MockDbSession:
 
     def set_single_result(self, result: Any | None) -> None:
         self._query_results["single"] = [result] if result else []
+
+    def set_team_ids(self, ids: list[int]) -> None:
+        """Set team ID results for team membership queries."""
+        self._query_results["team_ids"] = [(i,) for i in ids]
 
     def add(self, obj: Any) -> None:
         self.added.append(obj)
@@ -103,17 +177,29 @@ class MockDbSession:
         self._call_count += 1
         query_str = str(query).lower()
 
-        # Connector ID queries (for getting user's connectors)
-        if "connectors.id" in query_str and "documents" not in query_str:
-            return MockResult(self._query_results["connectors"])
+        # Team ID queries (for permissions)
+        if "teams" in query_str and "team_members" in query_str:
+            return MockResult(self._query_results["team_ids"])
 
-        # Count query for documents
-        if "documents.id" in query_str and "documents.title" not in query_str:
-            return MockResult(self._query_results["count"])
+        # Full connector object query (for getting connector details)
+        # Pattern: select(ConnectorORM).where(ConnectorORM.id == X)
+        if "connectors" in query_str and "connectors.id =" in query_str and "documents" not in query_str:
+            # Single connector by ID - return from objects list
+            return MockResult(self._query_results["connector_objects"])
 
-        # Single document query with JOIN on connectors
-        if "documents" in query_str and "connectors" in query_str and "documents.id =" in query_str:
+        # Connector ID-only queries (for listing accessible connectors)
+        # Pattern: select(ConnectorORM.id)
+        if "connectors.id" in query_str and "connectors.name" not in query_str and "documents" not in query_str:
+            return MockResult(self._query_results["connector_ids"])
+
+        # Single document query by ID (with or without joins)
+        # Pattern: select(DocumentORM).where(DocumentORM.id == X)
+        if "documents" in query_str and "documents.id =" in query_str:
             return MockResult(self._query_results["single"])
+
+        # Count query for documents (only selecting ID, not other fields)
+        if "documents.id" in query_str and "documents.title" not in query_str and "documents.id =" not in query_str:
+            return MockResult(self._query_results["count"])
 
         # List documents query
         if "documents" in query_str:
@@ -141,9 +227,11 @@ class TestDocumentEndpoints:
     ) -> TestClient:
         """Create test client with mocked dependencies."""
         from api.dependencies import get_current_user, get_db_session
+        from api.middleware.error_handler import setup_error_handlers
         from api.routes.documents import router
 
         app = FastAPI()
+        setup_error_handlers(app)  # Enable error handlers for proper HTTP responses
         app.include_router(router, prefix="/documents")
 
         async def override_db() -> AsyncGenerator[MockDbSession, None]:
@@ -155,7 +243,7 @@ class TestDocumentEndpoints:
         app.dependency_overrides[get_db_session] = override_db
         app.dependency_overrides[get_current_user] = override_user
 
-        return TestClient(app)
+        return TestClient(app, raise_server_exceptions=False)
 
     def test_list_documents_no_connectors(
         self,
@@ -277,7 +365,9 @@ class TestDocumentEndpoints:
         response = client.get("/documents/999")
 
         assert response.status_code == 404
-        assert response.json()["detail"] == "Document not found"
+        data = response.json()
+        assert data["error"]["code"] == "NOT_FOUND"
+        assert "not found" in data["error"]["message"].lower()
 
     def test_get_document_other_user(
         self,

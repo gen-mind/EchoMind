@@ -7,19 +7,18 @@
 /* eslint-disable */
 import type { PaginationRequest, PaginationResponse } from "../common";
 
-/** LLM provider types */
+/**
+ * LLM provider types
+ * Simplified: TGI/vLLM/OpenAI/Ollama all use OpenAI-compatible API format
+ */
 export enum LLMProvider {
   LLM_PROVIDER_UNSPECIFIED = "LLM_PROVIDER_UNSPECIFIED",
-  /** LLM_PROVIDER_TGI - Text Generation Inference */
-  LLM_PROVIDER_TGI = "LLM_PROVIDER_TGI",
-  /** LLM_PROVIDER_VLLM - vLLM */
-  LLM_PROVIDER_VLLM = "LLM_PROVIDER_VLLM",
-  /** LLM_PROVIDER_OPENAI - OpenAI API */
-  LLM_PROVIDER_OPENAI = "LLM_PROVIDER_OPENAI",
-  /** LLM_PROVIDER_ANTHROPIC - Anthropic API */
+  /** LLM_PROVIDER_OPENAI_COMPATIBLE - Any OpenAI-compatible API (TGI, vLLM, OpenAI, Ollama, etc.) */
+  LLM_PROVIDER_OPENAI_COMPATIBLE = "LLM_PROVIDER_OPENAI_COMPATIBLE",
+  /** LLM_PROVIDER_ANTHROPIC - Anthropic Messages API (streaming, pay-per-token) */
   LLM_PROVIDER_ANTHROPIC = "LLM_PROVIDER_ANTHROPIC",
-  /** LLM_PROVIDER_OLLAMA - Ollama (local dev) */
-  LLM_PROVIDER_OLLAMA = "LLM_PROVIDER_OLLAMA",
+  /** LLM_PROVIDER_ANTHROPIC_TOKEN - Claude CLI with Max subscription OAuth token */
+  LLM_PROVIDER_ANTHROPIC_TOKEN = "LLM_PROVIDER_ANTHROPIC_TOKEN",
   UNRECOGNIZED = "UNRECOGNIZED",
 }
 

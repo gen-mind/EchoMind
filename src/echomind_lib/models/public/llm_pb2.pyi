@@ -11,17 +11,13 @@ DESCRIPTOR: _descriptor.FileDescriptor
 class LLMProvider(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
     LLM_PROVIDER_UNSPECIFIED: _ClassVar[LLMProvider]
-    LLM_PROVIDER_TGI: _ClassVar[LLMProvider]
-    LLM_PROVIDER_VLLM: _ClassVar[LLMProvider]
-    LLM_PROVIDER_OPENAI: _ClassVar[LLMProvider]
+    LLM_PROVIDER_OPENAI_COMPATIBLE: _ClassVar[LLMProvider]
     LLM_PROVIDER_ANTHROPIC: _ClassVar[LLMProvider]
-    LLM_PROVIDER_OLLAMA: _ClassVar[LLMProvider]
+    LLM_PROVIDER_ANTHROPIC_TOKEN: _ClassVar[LLMProvider]
 LLM_PROVIDER_UNSPECIFIED: LLMProvider
-LLM_PROVIDER_TGI: LLMProvider
-LLM_PROVIDER_VLLM: LLMProvider
-LLM_PROVIDER_OPENAI: LLMProvider
+LLM_PROVIDER_OPENAI_COMPATIBLE: LLMProvider
 LLM_PROVIDER_ANTHROPIC: LLMProvider
-LLM_PROVIDER_OLLAMA: LLMProvider
+LLM_PROVIDER_ANTHROPIC_TOKEN: LLMProvider
 
 class LLM(_message.Message):
     __slots__ = ("id", "name", "provider", "model_id", "endpoint", "has_api_key", "max_tokens", "temperature", "is_default", "is_active", "creation_date", "last_update")

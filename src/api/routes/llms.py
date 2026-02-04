@@ -62,9 +62,86 @@ async def list_llms(
     result = await db.execute(query)
     db_llms = result.scalars().all()
     
-    llms = [LLM.model_validate(llm_obj, from_attributes=True) for llm_obj in db_llms]
+    llms = [_orm_to_pydantic(llm_obj) for llm_obj in db_llms]
     
     return ListLLMsResponse(llms=llms)
+
+
+def _provider_to_db_string(provider: "LLMProvider") -> str:
+    """
+    Convert LLMProvider enum to database string.
+
+    Maps enum to lowercase canonical names for database storage.
+
+    Args:
+        provider: The LLMProvider enum value.
+
+    Returns:
+        Canonical provider string (openai-compatible, anthropic, anthropic-token).
+    """
+    from echomind_lib.models.public import LLMProvider
+
+    mapping = {
+        LLMProvider.LLM_PROVIDER_OPENAI_COMPATIBLE: "openai-compatible",
+        LLMProvider.LLM_PROVIDER_ANTHROPIC: "anthropic",
+        LLMProvider.LLM_PROVIDER_ANTHROPIC_TOKEN: "anthropic-token",
+    }
+    return mapping.get(provider, "openai-compatible")
+
+
+def _db_string_to_provider(provider_str: str) -> "LLMProvider":
+    """
+    Convert database string to LLMProvider enum.
+
+    Handles both new canonical names and legacy values.
+
+    Args:
+        provider_str: Provider string from database.
+
+    Returns:
+        LLMProvider enum value.
+    """
+    from echomind_lib.models.public import LLMProvider
+
+    normalized = provider_str.lower().strip()
+
+    # Map to enum - handles legacy values
+    if normalized in ("openai-compatible", "openai_compatible", "openai", "tgi", "vllm", "ollama",
+                      "llm_provider_openai_compatible", "llm_provider_tgi", "llm_provider_vllm",
+                      "llm_provider_openai", "llm_provider_ollama"):
+        return LLMProvider.LLM_PROVIDER_OPENAI_COMPATIBLE
+    elif normalized in ("anthropic", "llm_provider_anthropic"):
+        return LLMProvider.LLM_PROVIDER_ANTHROPIC
+    elif normalized in ("anthropic-token", "anthropic_token", "llm_provider_anthropic_token"):
+        return LLMProvider.LLM_PROVIDER_ANTHROPIC_TOKEN
+    else:
+        return LLMProvider.LLM_PROVIDER_OPENAI_COMPATIBLE  # Default fallback
+
+
+def _orm_to_pydantic(db_llm: LLMORM) -> LLM:
+    """
+    Convert ORM model to Pydantic model with proper provider conversion.
+
+    Args:
+        db_llm: Database ORM model.
+
+    Returns:
+        Pydantic LLM model.
+    """
+    return LLM(
+        id=db_llm.id,
+        name=db_llm.name,
+        provider=_db_string_to_provider(db_llm.provider),
+        model_id=db_llm.model_id,
+        endpoint=db_llm.endpoint,
+        has_api_key=db_llm.api_key is not None and len(db_llm.api_key) > 0,
+        max_tokens=db_llm.max_tokens,
+        temperature=float(db_llm.temperature),
+        is_default=db_llm.is_default,
+        is_active=db_llm.is_active,
+        creation_date=db_llm.creation_date,
+        last_update=db_llm.last_update,
+    )
 
 
 @router.post("", response_model=LLM, status_code=status.HTTP_201_CREATED)
@@ -86,7 +163,7 @@ async def create_llm(
     """
     llm = LLMORM(
         name=data.name,
-        provider=data.provider,
+        provider=_provider_to_db_string(data.provider),
         model_id=data.model_id,
         endpoint=data.endpoint,
         api_key=data.api_key,
@@ -96,12 +173,12 @@ async def create_llm(
         is_active=data.is_active,
         user_id_last_update=user.id,
     )
-    
+
     db.add(llm)
     await db.flush()
     await db.refresh(llm)
-    
-    return LLM.model_validate(llm, from_attributes=True)
+
+    return _orm_to_pydantic(llm)
 
 
 @router.get("/{llm_id}", response_model=LLM)
@@ -137,7 +214,7 @@ async def get_llm(
             detail="LLM not found",
         )
     
-    return LLM.model_validate(db_llm, from_attributes=True)
+    return _orm_to_pydantic(db_llm)
 
 
 @router.put("/{llm_id}", response_model=LLM)
@@ -178,7 +255,7 @@ async def update_llm(
     if data.name:
         db_llm.name = data.name
     if data.provider:
-        db_llm.provider = data.provider.name if hasattr(data.provider, 'name') else str(data.provider)
+        db_llm.provider = _provider_to_db_string(data.provider)
     if data.model_id:
         db_llm.model_id = data.model_id
     if data.endpoint:
@@ -196,7 +273,7 @@ async def update_llm(
     
     db_llm.user_id_last_update = user.id
     
-    return LLM.model_validate(db_llm, from_attributes=True)
+    return _orm_to_pydantic(db_llm)
 
 
 @router.delete("/{llm_id}", status_code=status.HTTP_204_NO_CONTENT)
