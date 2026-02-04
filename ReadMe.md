@@ -28,6 +28,8 @@ Like [OpenClaw](https://openclaw.ai/), EchoMind is an AI agent that can access y
 - **Organizational knowledge** — Teams, SharePoint, Google Drive, internal wikis, policies, and documents
 - **Personal business tools** — Email, calendar, CRM, and the apps your teams use daily
 
+> See [63 Supported Connectors](docs/personal-assistant/echomind-connectors.md) — including Salesforce, SAP, ServiceNow, Workday, and more.
+
 **EchoMind is an AI agent** that **thinks** about what the workflow needs, **retrieves** the right internal context, **acts** using tools, then **verifies** the result — all within a secure, permission-aware sandbox.
 
 > Built for real work: support automation, IT deflection, meeting follow-ups, contract review,
@@ -101,6 +103,8 @@ EchoMind is built for *process automation*, not just Q&A:
 - Invoice extraction + coding suggestions
 - Approval routing + audit-ready explanations
 
+> **Deep Dive:** [Business Use Cases](docs/personal-assistant/echomind-use-cases-business-problems.md) — 4 productized solutions (SmartTicketing, DataInsight, OnboardingBot, CustomerContext360)
+> | [Connector Use Cases](docs/personal-assistant/echomind-connector-use-cases.md) — 79 real-world workflows across 37 connectors
 
 ## 🚀 Why EchoMind?
 
@@ -131,7 +135,7 @@ EchoMind is an **agentic RAG platform** that actually *thinks* before it retriev
 | Feature | Description |
 |---------|-------------|
 | **Agentic Architecture** | Think → Act → Observe → Reflect loop for intelligent retrieval |
-| **Multi-Source Connectors** | Microsoft Teams, Google Drive (v1), with more planned |
+| **Multi-Source Connectors** | [63 connectors](docs/personal-assistant/echomind-connectors.md) — Salesforce, SAP, Teams, Drive, and more |
 | **Flexible Deployment** | Cloud, Hybrid, or fully Air-Gapped (SCIF compliant) |
 | **Private LLM Inference** | TGI/vLLM for on-premise GPU clusters |
 | **Enterprise Auth** | Authentik with OIDC/LDAP/Active Directory support |
@@ -253,13 +257,16 @@ We're building EchoMind in Python and welcome contributions in:
 - **Backend**: FastAPI, async Python, gRPC
 - **AI/ML**: Semantic Kernel, embeddings, reranking
 - **Infrastructure**: Kubernetes, Docker, CI/CD
-- **Connectors**: Microsoft Graph API, Google APIs
+- **Connectors**: Microsoft Graph, Google APIs, and [60+ more](docs/personal-assistant/echomind-connectors.md)
 
 ---
 
 ## Documentation
 
 - [Architecture](docs/architecture.md) - Technical design with Mermaid diagrams
+- [Supported Connectors](docs/personal-assistant/echomind-connectors.md) - 63 data source integrations with market analysis
+- [Business Use Cases](docs/personal-assistant/echomind-use-cases-business-problems.md) - Productized solutions for real business problems
+- [Connector Use Cases](docs/personal-assistant/echomind-connector-use-cases.md) - 79 workflows showing what each connector enables
 - API Documentation - *Coming soon*
 
 ---
