@@ -114,7 +114,7 @@ class OneDriveProvider(BaseProvider):
                     "Token validation failed",
                 )
 
-            logger.info("✅ Authenticated with Microsoft Graph API")
+            logger.info("🔐 Authenticated with Microsoft Graph API")
 
         except AuthenticationError:
             raise
@@ -158,7 +158,7 @@ class OneDriveProvider(BaseProvider):
             seconds=expires_in
         )
 
-        logger.info("✅ Authenticated with Microsoft Graph (app credentials)")
+        logger.info("🔐 Authenticated with Microsoft Graph (app credentials)")
 
     async def _refresh_token(self, config: dict[str, Any]) -> None:
         """
@@ -512,7 +512,7 @@ class OneDriveProvider(BaseProvider):
         )
 
         logger.info(
-            "✅ Streamed OneDrive file %s to storage (%d bytes)",
+            "📦 Streamed OneDrive file %s to storage (%d bytes)",
             file.source_id,
             content_len,
         )

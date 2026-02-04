@@ -139,7 +139,7 @@ class GuardianApp:
                 ),
             )
             self._nats_connected = True
-            logger.info("✅ NATS connected")
+            logger.info("📥 NATS subscriber connected")
 
             # Setup subscriptions
             await self._setup_subscriptions()
@@ -156,7 +156,7 @@ class GuardianApp:
         self._running = True
 
         if self._is_ready():
-            logger.info("✅ Guardian ready and listening for advisories")
+            logger.info("🚀 Guardian ready and listening for advisories")
         else:
             logger.warning("⚠️ Guardian started but waiting for connections...")
 
@@ -247,7 +247,7 @@ class GuardianApp:
                     ),
                 )
                 self._nats_connected = True
-                logger.info("✅ NATS reconnected successfully")
+                logger.info("📥 NATS subscriber reconnected")
                 await self._setup_subscriptions()
                 self._update_readiness()
             except Exception as e:
@@ -263,7 +263,7 @@ class GuardianApp:
             ready = self._is_ready()
             self._health_server.set_ready(ready)
             if ready:
-                logger.info("✅ All services connected - marking as ready")
+                logger.info("🚀 All services connected - marking as ready")
 
     async def _setup_subscriptions(self) -> None:
         """Setup NATS subscriptions for advisory messages."""
@@ -289,7 +289,7 @@ class GuardianApp:
                     subject=subject,
                     handler=self._handle_advisory,
                 )
-                logger.info("✅ Subscribed to %s", subject)
+                logger.info("📥 Subscribed to %s", subject)
             except Exception as e:
                 logger.warning("⚠️ Failed to subscribe to %s: %s", subject, e)
 
@@ -343,12 +343,12 @@ class GuardianApp:
         # Close service (closes alerters)
         if self._service:
             await self._service.close()
-            logger.info("✅ Alerters closed")
+            logger.info("🛑 Alerters closed")
 
         # Close NATS
         try:
             await close_nats_subscriber()
-            logger.info("✅ NATS subscriber disconnected")
+            logger.info("📥 NATS subscriber disconnected")
         except Exception:
             pass
 

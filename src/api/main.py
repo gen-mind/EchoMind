@@ -175,7 +175,7 @@ async def _retry_db_connection(settings: Settings) -> None:
         await asyncio.sleep(30)
         try:
             await init_db(settings.database_url, echo=settings.database_echo)
-            logger.info("✅ Database reconnected successfully")
+            logger.info("🗄️ Database reconnected")
             break
         except Exception as e:
             logger.warning(f"⚠️ Database reconnection attempt failed: {e}")
@@ -191,7 +191,7 @@ async def _retry_qdrant_connection(settings: Settings) -> None:
                 port=settings.qdrant_port,
                 api_key=settings.qdrant_api_key,
             )
-            logger.info("✅ Qdrant reconnected successfully")
+            logger.info("🔍 Qdrant reconnected")
             break
         except Exception as e:
             logger.warning(f"⚠️ Qdrant reconnection attempt failed: {e}")
@@ -208,7 +208,7 @@ async def _retry_minio_connection(settings: Settings) -> None:
                 secret_key=settings.minio_secret_key,
                 secure=settings.minio_secure,
             )
-            logger.info("✅ MinIO reconnected successfully")
+            logger.info("📦 MinIO reconnected")
             break
         except Exception as e:
             logger.warning(f"⚠️ MinIO reconnection attempt failed: {e}")
@@ -224,7 +224,7 @@ async def _retry_nats_connection(settings: Settings) -> None:
                 user=settings.nats_user,
                 password=settings.nats_password,
             )
-            logger.info("✅ NATS publisher reconnected successfully")
+            logger.info("📡 NATS publisher reconnected")
             break
         except Exception as e:
             logger.warning(f"⚠️ NATS reconnection attempt failed: {e}")
@@ -243,7 +243,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize services - non-blocking, app starts even if services unavailable
     try:
         await init_db(settings.database_url, echo=settings.database_echo)
-        logger.info("✅ Database connected successfully")
+        logger.info("🗄️ Database connected")
     except Exception as e:
         logger.warning(f"⚠️ Database initialization failed: {e}")
         logger.info("🔄 Will retry database connection in background...")
@@ -267,7 +267,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             port=settings.qdrant_port,
             api_key=settings.qdrant_api_key,
         )
-        logger.info("✅ Qdrant connected successfully")
+        logger.info("🔍 Qdrant connected")
     except Exception as e:
         logger.warning(f"⚠️ Qdrant initialization failed: {e}")
         logger.info("🔄 Will retry Qdrant connection in background...")
@@ -280,7 +280,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             secret_key=settings.minio_secret_key,
             secure=settings.minio_secure,
         )
-        logger.info("✅ MinIO connected successfully")
+        logger.info("📦 MinIO connected")
     except Exception as e:
         logger.warning(f"⚠️ MinIO initialization failed: {e}")
         logger.info("🔄 Will retry MinIO connection in background...")
@@ -293,7 +293,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             jwks_url=settings.auth_jwks_url,
             secret=settings.auth_secret,
         )
-        logger.info("✅ JWT validator initialized successfully")
+        logger.info("🔑 JWT validator initialized")
     except Exception as e:
         logger.warning(f"⚠️ JWT validator initialization failed: {e}")
 
@@ -303,7 +303,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             user=settings.nats_user,
             password=settings.nats_password,
         )
-        logger.info("✅ NATS publisher connected successfully")
+        logger.info("📡 NATS publisher connected")
     except Exception as e:
         logger.warning(f"⚠️ NATS publisher initialization failed: {e}")
         logger.info("🔄 Will retry NATS connection in background...")
@@ -316,7 +316,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             port=settings.embedder_port,
             timeout=settings.embedder_timeout,
         )
-        logger.info("✅ Embedder client initialized successfully")
+        logger.info("🔗 Embedder gRPC client connected")
     except Exception as e:
         logger.warning(f"⚠️ Embedder client initialization failed: {e}")
 

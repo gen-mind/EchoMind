@@ -314,7 +314,7 @@ class ConnectorService:
                 data=file.content,
                 content_type=file.mime_type,
             )
-            logger.info("✅ Uploaded %s to MinIO: %s", file.name, object_name)
+            logger.info("📦 Uploaded %s to MinIO: %s", file.name, object_name)
         except Exception as e:
             raise MinioUploadError(object_name, str(e)) from e
 
@@ -356,7 +356,7 @@ class ConnectorService:
                 object_key=object_name,
             )
             logger.info(
-                "✅ Streamed %s to MinIO: %s (%d bytes)",
+                "📦 Streamed %s to MinIO: %s (%d bytes)",
                 file.name,
                 object_name,
                 result.size,
@@ -628,7 +628,7 @@ class ConnectorService:
             payload=message.SerializeToString(),
         )
 
-        logger.info("✅ Published document.process for document %d", doc.id)
+        logger.info("📤 Published document.process for document %d", doc.id)
 
     async def close(self) -> None:
         """

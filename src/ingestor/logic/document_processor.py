@@ -97,7 +97,7 @@ class DocumentProcessor:
         structured_images = self._extract_structured_images(extracted_df)
 
         logger.info(
-            "✅ Processed document %d: %d chunks, %d images",
+            "🏁 Processed document %d: %d chunks, %d images",
             document_id,
             len(chunks),
             len(structured_images),

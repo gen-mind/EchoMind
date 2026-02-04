@@ -102,7 +102,7 @@ class ChatHandler:
         try:
             await self._message_loop(websocket, user)
         except WebSocketDisconnect:
-            logger.info("🔌 User %d disconnected", user.id)
+            logger.info("💔 User %d disconnected", user.id)
         except Exception as e:
             logger.error("❌ WebSocket error for user %d: %s", user.id, e)
         finally:
@@ -321,7 +321,7 @@ class ChatHandler:
             })
 
             logger.info(
-                "✅ Chat completed for user %d session %d: %d tokens, %d sources",
+                "🏁 Chat completed for user %d session %d: %d tokens, %d sources",
                 user.id,
                 session_id,
                 token_count,

@@ -125,7 +125,7 @@ class GoogleDriveProvider(BaseProvider):
                     "Token validation failed",
                 )
 
-            logger.info("✅ Authenticated with Google Drive API")
+            logger.info("🔐 Authenticated with Google Drive API")
 
         except AuthenticationError:
             raise
@@ -661,7 +661,7 @@ class GoogleDriveProvider(BaseProvider):
         )
 
         logger.info(
-            "✅ Streamed Workspace file %s to storage (%d bytes)",
+            "📦 Streamed Workspace file %s to storage (%d bytes)",
             file.source_id,
             content_len,
         )
@@ -738,7 +738,7 @@ class GoogleDriveProvider(BaseProvider):
         )
 
         logger.info(
-            "✅ Streamed file %s to storage (%d bytes)",
+            "📦 Streamed file %s to storage (%d bytes)",
             file.source_id,
             content_len,
         )

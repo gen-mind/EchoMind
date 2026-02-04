@@ -73,7 +73,7 @@ def wait_for_db(database_url: str, retries: int = 5, delay: int = 5) -> bool:
         try:
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            logger.info("✅ Database is ready")
+            logger.info("🗄️ Database is ready")
             engine.dispose()
             return True
         except OperationalError as e:
@@ -123,7 +123,7 @@ def run_migrations(database_url: str) -> None:
 
         logger.info("🚀 Running migrations...")
         command.upgrade(alembic_cfg, "head")
-        logger.info("✅ Migrations completed successfully")
+        logger.info("🏁 Migrations completed")
 
     except Exception as e:
         logger.exception("❌ Migration failed: %s", e)

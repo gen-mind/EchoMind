@@ -9,6 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](license)
 [![Deploy Anywhere](https://img.shields.io/badge/Deploy-Anywhere-brightgreen.svg)](#deployment-modes)
 
+**EchoMind is OpenClaw for business with no security risk**
 **From single container to cluster. From one user to the whole org.**<br/>
 **One platform. $0 forever. No trials. No limits.** ✨
 

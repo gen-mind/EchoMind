@@ -221,7 +221,7 @@ class ConnectorService:
         await self.db.refresh(connector)
 
         logger.info(
-            "✅ Created connector %d (%s, scope=%s) for user %d",
+            "📝 Created connector %d (%s, scope=%s) for user %d",
             connector.id,
             connector.type,
             actual_scope,
@@ -313,7 +313,7 @@ class ConnectorService:
         connector.last_update = datetime.now(timezone.utc)
         connector.user_id_last_update = user.id
 
-        logger.info("✅ Updated connector %d by user %d", connector_id, user.id)
+        logger.info("🔄 Updated connector %d by user %d", connector_id, user.id)
 
         return connector
 

@@ -92,7 +92,7 @@ class Orchestrator:
                 self._settings.database_url,
                 echo=self._settings.database_echo,
             )
-            logger.info("✅ Database connected")
+            logger.info("🗄️ Database connected")
         except Exception as e:
             logger.error("❌ Database connection failed: %s", e)
             raise
@@ -106,7 +106,7 @@ class Orchestrator:
                 password=self._settings.nats_password,
                 timeout=self._settings.nats_connect_timeout,
             )
-            logger.info("✅ NATS connected")
+            logger.info("📡 NATS publisher connected")
 
             # Create JetStream stream if it doesn't exist
             try:
@@ -171,7 +171,7 @@ class Orchestrator:
         # Mark as ready
         self._health_server.set_ready(True)
         self._running = True
-        logger.info("✅ Orchestrator ready")
+        logger.info("🚀 Orchestrator ready")
 
     async def stop(self) -> None:
         """
@@ -197,7 +197,7 @@ class Orchestrator:
 
         # Close database
         await close_db()
-        logger.info("🔌 Database disconnected")
+        logger.info("🗄️ Database disconnected")
 
         logger.info("👋 Orchestrator stopped")
 

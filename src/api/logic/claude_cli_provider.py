@@ -265,7 +265,7 @@ class ClaudeCliProvider:
             self._credentials_path.write_text(json.dumps(credentials, indent=2))
             self._credentials_path.chmod(0o600)  # Secure permissions
             self._credentials_written = True
-            logger.info("✅ Wrote credentials file to %s", self._credentials_path)
+            logger.info("📝 Wrote credentials file to %s", self._credentials_path)
         except OSError as e:
             raise ClaudeCliCredentialsError(
                 f"Failed to write credentials file {self._credentials_path}: {e}"
@@ -642,7 +642,7 @@ class ClaudeCliProvider:
             )
 
         logger.info(
-            "✅ Claude CLI completed: session_id=%s, response_len=%d",
+            "🏁 Claude CLI completed: session_id=%s, response_len=%d",
             response.session_id,
             len(response.text),
         )

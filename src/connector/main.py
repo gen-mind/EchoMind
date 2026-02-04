@@ -114,7 +114,7 @@ class ConnectorApp:
                 echo=self._settings.database_echo,
             )
             self._db_connected = True
-            logger.info("✅ Database connected")
+            logger.info("🗄️ Database connected")
         except Exception as e:
             logger.warning("⚠️ Database connection failed: %s", e)
             logger.info("🔄 Will retry database connection in background...")
@@ -132,7 +132,7 @@ class ConnectorApp:
                 secure=self._settings.minio_secure,
             )
             self._minio_connected = True
-            logger.info("✅ MinIO connected")
+            logger.info("📦 MinIO connected")
         except Exception as e:
             logger.warning("⚠️ MinIO connection failed: %s", e)
             logger.info("🔄 Will retry MinIO connection in background...")
@@ -153,7 +153,7 @@ class ConnectorApp:
                 ),
             )
             self._nats_pub_connected = True
-            logger.info("✅ NATS publisher connected")
+            logger.info("📡 NATS publisher connected")
         except Exception as e:
             logger.warning("⚠️ NATS publisher connection failed: %s", e)
             logger.info("🔄 Will retry NATS publisher connection in background...")
@@ -174,7 +174,7 @@ class ConnectorApp:
                 ),
             )
             self._nats_sub_connected = True
-            logger.info("✅ NATS subscriber connected")
+            logger.info("📥 NATS subscriber connected")
 
             # Setup subscriptions only if NATS connected
             await self._setup_subscriptions()
@@ -190,7 +190,7 @@ class ConnectorApp:
         self._running = True
 
         if self._is_ready():
-            logger.info("✅ Connector ready and listening")
+            logger.info("🚀 Connector ready and listening")
         else:
             logger.warning("⚠️ Connector started but waiting for connections...")
 
@@ -204,7 +204,7 @@ class ConnectorApp:
                     echo=self._settings.database_echo,
                 )
                 self._db_connected = True
-                logger.info("✅ Database reconnected successfully")
+                logger.info("🗄️ Database reconnected")
                 self._update_readiness()
             except Exception as e:
                 logger.warning("⚠️ Database reconnection attempt failed: %s", e)
@@ -221,7 +221,7 @@ class ConnectorApp:
                     secure=self._settings.minio_secure,
                 )
                 self._minio_connected = True
-                logger.info("✅ MinIO reconnected successfully")
+                logger.info("📦 MinIO reconnected")
                 self._update_readiness()
             except Exception as e:
                 logger.warning("⚠️ MinIO reconnection attempt failed: %s", e)
@@ -245,7 +245,7 @@ class ConnectorApp:
                     ),
                 )
                 self._nats_pub_connected = True
-                logger.info("✅ NATS publisher reconnected successfully")
+                logger.info("📡 NATS publisher reconnected")
                 self._update_readiness()
             except Exception as e:
                 logger.warning("⚠️ NATS publisher reconnection attempt failed: %s", e)
@@ -269,7 +269,7 @@ class ConnectorApp:
                     ),
                 )
                 self._nats_sub_connected = True
-                logger.info("✅ NATS subscriber reconnected successfully")
+                logger.info("📥 NATS subscriber reconnected")
                 await self._setup_subscriptions()
                 self._update_readiness()
             except Exception as e:
@@ -290,7 +290,7 @@ class ConnectorApp:
             ready = self._is_ready()
             self._health_server.set_ready(ready)
             if ready:
-                logger.info("✅ All services connected - marking as ready")
+                logger.info("🚀 All services connected - marking as ready")
 
     async def _setup_subscriptions(self) -> None:
         """Set up NATS subscriptions for connector sync events."""
@@ -309,7 +309,7 @@ class ConnectorApp:
                 subject=subject,
                 handler=self._handle_sync_message,
             )
-            logger.info("✅ Subscribed to %s", subject)
+            logger.info("📥 Subscribed to %s", subject)
 
     async def _handle_sync_message(self, msg: Any) -> None:
         """
@@ -395,25 +395,25 @@ class ConnectorApp:
         # Close connections (ignore errors for cleanup)
         try:
             await close_nats_subscriber()
-            logger.info("✅ NATS subscriber disconnected")
+            logger.info("📥 NATS subscriber disconnected")
         except Exception:
             pass
 
         try:
             await close_nats_publisher()
-            logger.info("✅ NATS publisher disconnected")
+            logger.info("📡 NATS publisher disconnected")
         except Exception:
             pass
 
         try:
             close_minio()
-            logger.info("✅ MinIO disconnected")
+            logger.info("📦 MinIO disconnected")
         except Exception:
             pass
 
         try:
             await close_db()
-            logger.info("✅ Database disconnected")
+            logger.info("🗄️ Database disconnected")
         except Exception:
             pass
 

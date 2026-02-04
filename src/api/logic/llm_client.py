@@ -424,7 +424,7 @@ class LLMClient:
         if self._client:
             await self._client.aclose()
             self._client = None
-            logger.info("✅ LLM client closed")
+            logger.info("🌐 LLM client closed")
 
 
 # Global client instance

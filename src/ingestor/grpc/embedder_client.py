@@ -75,7 +75,7 @@ class EmbedderClient:
                 ],
             )
             self._stub = EmbedServiceStub(self._channel)
-            logger.info("🔌 Connected to Embedder at %s:%d", self._host, self._port)
+            logger.info("🔗 Connected to Embedder at %s:%d", self._host, self._port)
 
     async def get_dimension(self) -> int:
         """
@@ -152,7 +152,7 @@ class EmbedderClient:
             ]
 
             logger.info(
-                "✅ Embedded %d texts for document %s",
+                "🎯 Embedded %d texts for document %s",
                 len(vectors),
                 document_id or "N/A",
             )
@@ -232,7 +232,7 @@ class EmbedderClient:
             await self._channel.close()
             self._channel = None
             self._stub = None
-            logger.info("✅ Embedder client closed")
+            logger.info("🔗 Embedder client closed")
 
     async def health_check(self) -> dict[str, Any]:
         """

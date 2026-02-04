@@ -122,7 +122,7 @@ class IngestorApp:
                 echo=self._settings.database_echo,
             )
             self._db_connected = True
-            logger.info("✅ Database connected")
+            logger.info("🗄️ Database connected")
         except Exception as e:
             logger.warning("⚠️ Database connection failed: %s", e)
             logger.info("🔄 Will retry database connection in background...")
@@ -140,7 +140,7 @@ class IngestorApp:
                 secure=self._settings.minio_secure,
             )
             self._minio_connected = True
-            logger.info("✅ MinIO connected")
+            logger.info("📦 MinIO connected")
         except Exception as e:
             logger.warning("⚠️ MinIO connection failed: %s", e)
             logger.info("🔄 Will retry MinIO connection in background...")
@@ -157,7 +157,7 @@ class IngestorApp:
                 api_key=self._settings.qdrant_api_key or None,
             )
             self._qdrant_connected = True
-            logger.info("✅ Qdrant connected")
+            logger.info("🔍 Qdrant connected")
         except Exception as e:
             logger.warning("⚠️ Qdrant connection failed: %s", e)
             logger.info("🔄 Will retry Qdrant connection in background...")
@@ -178,7 +178,7 @@ class IngestorApp:
                 ),
             )
             self._nats_connected = True
-            logger.info("✅ NATS connected")
+            logger.info("📥 NATS subscriber connected")
 
             # Setup subscriptions only if NATS connected
             await self._setup_subscriptions()
@@ -194,7 +194,7 @@ class IngestorApp:
         self._running = True
 
         if self._is_ready():
-            logger.info("✅ Ingestor ready and listening")
+            logger.info("🚀 Ingestor ready and listening")
         else:
             logger.warning("⚠️ Ingestor started but waiting for connections...")
 
@@ -208,7 +208,7 @@ class IngestorApp:
                     echo=self._settings.database_echo,
                 )
                 self._db_connected = True
-                logger.info("✅ Database reconnected successfully")
+                logger.info("🗄️ Database reconnected")
                 self._update_readiness()
             except Exception as e:
                 logger.warning("⚠️ Database reconnection attempt failed: %s", e)
@@ -225,7 +225,7 @@ class IngestorApp:
                     secure=self._settings.minio_secure,
                 )
                 self._minio_connected = True
-                logger.info("✅ MinIO reconnected successfully")
+                logger.info("📦 MinIO reconnected")
                 self._update_readiness()
             except Exception as e:
                 logger.warning("⚠️ MinIO reconnection attempt failed: %s", e)
@@ -241,7 +241,7 @@ class IngestorApp:
                     api_key=self._settings.qdrant_api_key or None,
                 )
                 self._qdrant_connected = True
-                logger.info("✅ Qdrant reconnected successfully")
+                logger.info("🔍 Qdrant reconnected")
                 self._update_readiness()
             except Exception as e:
                 logger.warning("⚠️ Qdrant reconnection attempt failed: %s", e)
@@ -261,7 +261,7 @@ class IngestorApp:
                     ),
                 )
                 self._nats_connected = True
-                logger.info("✅ NATS reconnected successfully")
+                logger.info("📥 NATS subscriber reconnected")
                 await self._setup_subscriptions()
                 self._update_readiness()
             except Exception as e:
@@ -282,7 +282,7 @@ class IngestorApp:
             ready = self._is_ready()
             self._health_server.set_ready(ready)
             if ready:
-                logger.info("✅ All services connected - marking as ready")
+                logger.info("🚀 All services connected - marking as ready")
 
     async def _setup_subscriptions(self) -> None:
         """
@@ -303,7 +303,7 @@ class IngestorApp:
             subject=subject,
             handler=self._handle_message,
         )
-        logger.info("✅ Subscribed to %s", subject)
+        logger.info("📥 Subscribed to %s", subject)
 
     async def _handle_message(self, msg: Msg) -> None:
         """
@@ -426,25 +426,25 @@ class IngestorApp:
         # Close connections (ignore errors for cleanup)
         try:
             await close_nats_subscriber()
-            logger.info("✅ NATS subscriber disconnected")
+            logger.info("📥 NATS subscriber disconnected")
         except Exception:
             pass
 
         try:
             await close_qdrant()
-            logger.info("✅ Qdrant disconnected")
+            logger.info("🔍 Qdrant disconnected")
         except Exception:
             pass
 
         try:
             close_minio()
-            logger.info("✅ MinIO disconnected")
+            logger.info("📦 MinIO disconnected")
         except Exception:
             pass
 
         try:
             await close_db()
-            logger.info("✅ Database disconnected")
+            logger.info("🗄️ Database disconnected")
         except Exception:
             pass
 

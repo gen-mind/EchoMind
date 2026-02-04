@@ -133,7 +133,7 @@ class SentenceEncoder:
                     model = SentenceTransformer(model_name, device=device)
 
                 cls._model_cache[model_name] = model
-                logger.info("✅ Model loaded: %s (dim=%d)", model_name, model.get_sentence_embedding_dimension())
+                logger.info("🧠 Model loaded: %s (dim=%d)", model_name, model.get_sentence_embedding_dimension())
                 return model
             except Exception as e:
                 logger.error("❌ Failed to load model %s: %s", model_name, e)

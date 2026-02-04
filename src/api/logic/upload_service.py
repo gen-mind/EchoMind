@@ -455,7 +455,7 @@ class UploadService:
                 subject="document.process",
                 payload=message.SerializeToString(),
             )
-            logger.info("✅ Published document.process for document %d", document.id)
+            logger.info("📤 Published document.process for document %d", document.id)
         except Exception as e:
             logger.error(
                 "❌ Failed to publish document.process for document %d: %s",

@@ -91,7 +91,7 @@ class EmbedServicer(EmbedServiceServicer):
                     "texts cannot be empty",
                 )
 
-            logger.info("📥 Embed request: %d texts", texts_count)
+            logger.info("📨 Embed request: %d texts", texts_count)
 
             # Encode texts
             vectors = SentenceEncoder.encode(
@@ -106,7 +106,7 @@ class EmbedServicer(EmbedServiceServicer):
                 for vec in vectors
             ]
 
-            logger.info("✅ Embedded %d texts", texts_count)
+            logger.info("🎯 Embedded %d texts", texts_count)
             return EmbedResponse(embeddings=embeddings)
 
         except ModelNotFoundError as e:
@@ -190,10 +190,10 @@ def serve() -> None:
     SentenceEncoder.set_device(checker.get_torch_device())
 
     # Pre-load default model
-    logger.info("📥 Pre-loading model: %s", settings.model_name)
+    logger.info("🧠 Pre-loading model: %s", settings.model_name)
     try:
         dim = SentenceEncoder.get_dimension(settings.model_name)
-        logger.info("✅ Model loaded, dimension: %d", dim)
+        logger.info("🧠 Model loaded, dimension: %d", dim)
     except Exception as e:
         logger.error("❌ Failed to load model: %s", e)
         sys.exit(1)
