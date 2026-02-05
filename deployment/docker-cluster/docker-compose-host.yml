@@ -577,57 +577,36 @@ services:
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
 
   # ===============================================
-  # EchoMind WebUI - SvelteKit Frontend (Open WebUI Fork)
+  # EchoMind WebUI - Static SvelteKit Frontend (Nginx)
   # ===============================================
-  # This is the new frontend based on Open WebUI with EchoMind extensions.
-  # It connects to the EchoMind FastAPI backend via WEBUI_BASE_URL.
+  # Lightweight nginx container serving static SvelteKit SPA (~5MB).
+  # All API calls are routed to EchoMind API via Traefik path-based routing.
+  # No Python backend needed - just static files.
   webui:
     image: gsantopaolo/echomind-webui:${WEBUI_VERSION:-0.1.0-beta.1}
     build:
       context: ../../../echomind-webui
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.nginx
       args:
         - BUILD_HASH=${BUILD_HASH:-dev}
-        - USE_SLIM=true
     container_name: echomind-webui
     hostname: webui
-    environment:
-      # Open WebUI connects to EchoMind API backend
-      - WEBUI_URL=${WEBUI_URL:-https://${DOMAIN}}
-      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
-      # Disable Open WebUI's default auth - use EchoMind's Authentik OIDC
-      - ENABLE_OAUTH_SIGNUP=true
-      - OAUTH_PROVIDER_NAME=Authentik
-      - OPENID_PROVIDER_URL=${OIDC_AUTHORITY}
-      - OAUTH_CLIENT_ID=${OIDC_CLIENT_ID}
-      - OAUTH_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
-      - OAUTH_SCOPES=openid profile email
-      # EchoMind API integration
-      - ECHOMIND_API_URL=http://api:8000
-      # Disable features handled by EchoMind backend
-      - ENABLE_RAG_WEB_LOADER_SSL_VERIFICATION=false
-      - ENABLE_RAG_LOCAL_WEB_FETCH=false
+    # No environment variables needed - static files only
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
       interval: 30s
-      timeout: 10s
-      start_period: 60s
-      retries: 5
-    depends_on:
-      api:
-        condition: service_started
-      authentik-server:
-        condition: service_started
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     restart: unless-stopped
     networks:
       - frontend
-      - backend
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.webui.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.webui.entrypoints=websecure"
       - "traefik.http.routers.webui.tls.certresolver=letsencrypt"
-      - "traefik.http.services.webui.loadbalancer.server.port=8080"
+      - "traefik.http.services.webui.loadbalancer.server.port=80"
       # Low priority - API routes (priority=100) take precedence
       - "traefik.http.routers.webui.priority=1"
 
