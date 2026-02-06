@@ -889,10 +889,10 @@ async def get_session_user(
         validator = get_jwt_validator()
         token_user = validator.validate_token(token)
     except Exception as e:
-        logger.error(f"❌ Token validation failed: {e}")
+        logger.info(f"🔒 Token validation failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {str(e)}",
+            detail="Not authenticated",
         )
 
     # Extract token expiry for frontend timer

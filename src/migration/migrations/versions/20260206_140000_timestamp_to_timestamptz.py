@@ -5,19 +5,22 @@ Revises: 20260206_130000
 Create Date: 2026-02-06 14:00:00.000000
 
 Converts all timestamp columns from TIMESTAMP (timezone-naive) to
-TIMESTAMPTZ (timezone-aware). PostgreSQL interprets existing naive values
-as UTC during the conversion, which is correct since all timestamps in
-the application are stored in UTC.
+TIMESTAMPTZ (timezone-aware) using explicit ``AT TIME ZONE 'UTC'``
+so that existing naive values are correctly treated as UTC regardless
+of the session's TimeZone setting.
 
-This fixes the asyncpg 0.31+ strict type checking that rejects
+This fixes the asyncpg strict type checking that rejects
 timezone-aware Python datetimes for naive DB columns.
 
-See: https://www.postgresql.org/docs/current/datatype-datetime.html
+References:
+    - https://www.postgresql.org/docs/current/datatype-datetime.html
+    - https://wiki.postgresql.org/wiki/Don't_Do_This#Don.27t_use_timestamp_.28without_time_zone.29
 """
 
 from typing import Sequence, Union
 
 from alembic import op
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import TIMESTAMP
 
 # revision identifiers, used by Alembic.
@@ -45,15 +48,21 @@ _TIMESTAMP_COLUMNS: list[tuple[str, list[str]]] = [
 
 
 def upgrade() -> None:
-    """Convert all TIMESTAMP columns to TIMESTAMPTZ."""
+    """Convert all TIMESTAMP columns to TIMESTAMPTZ.
+
+    Uses ``AT TIME ZONE 'UTC'`` so PostgreSQL treats existing naive
+    values as UTC, regardless of the session's ``TimeZone`` setting.
+    Without this, PostgreSQL would interpret naive values as local time.
+    """
     for table, columns in _TIMESTAMP_COLUMNS:
         for col in columns:
-            op.alter_column(
-                table,
-                col,
-                type_=TIMESTAMP(timezone=True),
-                existing_type=TIMESTAMP(timezone=False),
-                existing_nullable=True,
+            op.execute(
+                text(
+                    f'ALTER TABLE "{table}" '
+                    f'ALTER COLUMN "{col}" '
+                    f"TYPE TIMESTAMPTZ "
+                    f"USING \"{col}\" AT TIME ZONE 'UTC'"
+                )
             )
 
 
@@ -61,10 +70,11 @@ def downgrade() -> None:
     """Revert TIMESTAMPTZ columns back to TIMESTAMP."""
     for table, columns in _TIMESTAMP_COLUMNS:
         for col in columns:
-            op.alter_column(
-                table,
-                col,
-                type_=TIMESTAMP(timezone=False),
-                existing_type=TIMESTAMP(timezone=True),
-                existing_nullable=True,
+            op.execute(
+                text(
+                    f'ALTER TABLE "{table}" '
+                    f'ALTER COLUMN "{col}" '
+                    f"TYPE TIMESTAMP WITHOUT TIME ZONE "
+                    f"USING \"{col}\" AT TIME ZONE 'UTC'"
+                )
             )

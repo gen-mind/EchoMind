@@ -4,7 +4,10 @@ FastAPI dependency injection.
 Provides dependencies for database sessions, authentication, and services.
 """
 
+import logging
 from typing import Annotated, AsyncGenerator
+
+logger = logging.getLogger(__name__)
 
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
@@ -64,9 +67,10 @@ async def get_current_user(
         validator = get_jwt_validator()
         token_user = validator.validate_token(token)
     except Exception as e:
+        logger.info(f"🔒 Token validation failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {str(e)}",
+            detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
