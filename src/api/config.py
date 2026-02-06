@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     minio_secret_key: str = Field(default="minioadmin", description="MinIO secret key")
     minio_secure: bool = Field(default=False, description="Use HTTPS for MinIO")
     minio_bucket: str = Field(default="echomind-documents", description="Default bucket")
+    minio_public_endpoint: str | None = Field(
+        default=None,
+        description="Public MinIO endpoint for presigned URLs (e.g., https://s3.demo.echomind.ch). "
+        "If not set, presigned URLs use the internal endpoint.",
+    )
     
     # NATS
     nats_url: str = Field(default="nats://localhost:4222", description="NATS server URL")

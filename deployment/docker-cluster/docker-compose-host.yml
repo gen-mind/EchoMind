@@ -304,6 +304,7 @@ services:
       - API_MINIO_ENDPOINT=minio:9000
       - API_MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - API_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - API_MINIO_PUBLIC_ENDPOINT=https://${S3_DOMAIN}
       - API_NATS_URL=nats://nats:4222
       # Auth - issuer must match JWT's 'iss' claim exactly (external URL)
       - API_AUTH_ISSUER=${API_AUTH_ISSUER}

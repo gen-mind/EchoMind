@@ -811,3 +811,101 @@ class TestUploadServiceIntegration:
 
         assert abort_result is True
         mock_db.delete.assert_called()
+
+
+class TestPresignedUrlRewrite:
+    """Tests for _rewrite_presigned_url method."""
+
+    @pytest.fixture
+    def mock_db(self) -> AsyncMock:
+        """Create a mock database session."""
+        return AsyncMock()
+
+    @pytest.fixture
+    def mock_minio(self) -> MagicMock:
+        """Create a mock MinIO client."""
+        return MagicMock()
+
+    def test_rewrites_internal_to_public_endpoint(
+        self, mock_db: AsyncMock, mock_minio: MagicMock,
+    ) -> None:
+        """Test that internal Docker endpoint is replaced with public URL."""
+        service = UploadService(mock_db, minio=mock_minio)
+        service._settings = MagicMock()
+        service._settings.minio_endpoint = "minio:9000"
+        service._settings.minio_secure = False
+        service._settings.minio_public_endpoint = "https://s3.demo.echomind.ch"
+
+        internal_url = (
+            "http://minio:9000/echomind-documents/1/upload_abc/test.pdf"
+            "?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=abc123"
+        )
+
+        result = service._rewrite_presigned_url(internal_url)
+
+        assert result.startswith("https://s3.demo.echomind.ch/echomind-documents/")
+        assert "X-Amz-Signature=abc123" in result
+        assert "minio:9000" not in result
+
+    def test_no_rewrite_when_public_endpoint_not_set(
+        self, mock_db: AsyncMock, mock_minio: MagicMock,
+    ) -> None:
+        """Test that URL is returned unchanged when no public endpoint configured."""
+        service = UploadService(mock_db, minio=mock_minio)
+        service._settings = MagicMock()
+        service._settings.minio_public_endpoint = None
+
+        internal_url = "http://minio:9000/bucket/path?signature=abc"
+
+        result = service._rewrite_presigned_url(internal_url)
+
+        assert result == internal_url
+
+    def test_adds_https_scheme_if_missing(
+        self, mock_db: AsyncMock, mock_minio: MagicMock,
+    ) -> None:
+        """Test that https:// is added to public endpoint if no scheme specified."""
+        service = UploadService(mock_db, minio=mock_minio)
+        service._settings = MagicMock()
+        service._settings.minio_endpoint = "minio:9000"
+        service._settings.minio_secure = False
+        service._settings.minio_public_endpoint = "s3.demo.echomind.ch"
+
+        internal_url = "http://minio:9000/bucket/path?signature=abc"
+
+        result = service._rewrite_presigned_url(internal_url)
+
+        assert result.startswith("https://s3.demo.echomind.ch/bucket/path")
+
+    def test_preserves_query_params(
+        self, mock_db: AsyncMock, mock_minio: MagicMock,
+    ) -> None:
+        """Test that query parameters (signature, etc.) are preserved."""
+        service = UploadService(mock_db, minio=mock_minio)
+        service._settings = MagicMock()
+        service._settings.minio_endpoint = "minio:9000"
+        service._settings.minio_secure = False
+        service._settings.minio_public_endpoint = "https://s3.example.com"
+
+        query = "X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=key&X-Amz-Signature=sig"
+        internal_url = f"http://minio:9000/bucket/path?{query}"
+
+        result = service._rewrite_presigned_url(internal_url)
+
+        assert query in result
+
+    def test_handles_secure_internal_endpoint(
+        self, mock_db: AsyncMock, mock_minio: MagicMock,
+    ) -> None:
+        """Test rewrite when internal MinIO uses HTTPS."""
+        service = UploadService(mock_db, minio=mock_minio)
+        service._settings = MagicMock()
+        service._settings.minio_endpoint = "minio:9000"
+        service._settings.minio_secure = True
+        service._settings.minio_public_endpoint = "https://s3.example.com"
+
+        internal_url = "https://minio:9000/bucket/path?sig=abc"
+
+        result = service._rewrite_presigned_url(internal_url)
+
+        assert result == "https://s3.example.com/bucket/path?sig=abc"
