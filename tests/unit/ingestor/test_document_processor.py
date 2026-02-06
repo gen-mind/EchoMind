@@ -380,8 +380,13 @@ class TestDocumentProcessor:
                 assert kwargs["extract_images"] is False
 
     @pytest.mark.asyncio
-    async def test_extract_pdf_with_yolox_disabled(self) -> None:
-        """Test PDF extraction omits YOLOX endpoints when disabled."""
+    async def test_extract_pdf_always_passes_yolox_endpoints(self) -> None:
+        """Test PDF extraction ALWAYS passes yolox_endpoints (schema requires it).
+
+        PDFiumConfigSchema.validate_endpoints crashes with TypeError when
+        yolox_endpoints is None. Even with yolox_enabled=False, a valid
+        endpoint tuple must be supplied.
+        """
         mock_fn = MagicMock(return_value=pd.DataFrame())
         with patch.dict(
             "sys.modules",
@@ -398,7 +403,8 @@ class TestDocumentProcessor:
                     kwargs = mock_fn.call_args[1]
                     assert kwargs["extract_tables"] is False
                     assert kwargs["extract_charts"] is False
-                    assert kwargs["yolox_endpoints"] is None
+                    # Must STILL pass valid endpoints — schema crashes on None
+                    assert kwargs["yolox_endpoints"] == (None, self.settings.yolox_endpoint)
 
     @pytest.mark.asyncio
     async def test_extract_docx_passes_correct_kwargs(self) -> None:

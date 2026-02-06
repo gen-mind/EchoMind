@@ -175,13 +175,17 @@ class DocumentProcessor:
                     extract_primitives_from_pdf_pdfium,
                 )
 
+                # PDFiumConfigSchema ALWAYS validates yolox_endpoints
+                # (line 78: unpacks the tuple). Passing None crashes with
+                # TypeError. Must always supply a valid (gRPC, HTTP) tuple.
+                # When yolox_enabled=True the YOLOX NIM must be reachable.
                 return extract_primitives_from_pdf_pdfium(
                     df_extraction_ledger=df,
                     extract_text=True,
                     extract_tables=self._settings.yolox_enabled,
                     extract_charts=self._settings.yolox_enabled,
                     extract_images=False,
-                    yolox_endpoints=self._build_yolox_endpoints() if self._settings.yolox_enabled else None,
+                    yolox_endpoints=self._build_yolox_endpoints(),
                 )
 
             elif extractor_type == "docx":
