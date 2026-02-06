@@ -59,6 +59,20 @@ class WebUIChangelogResponse(BaseModel):
     pass
 
 
+class WebUIModelMeta(BaseModel):
+    """Model metadata for Open WebUI format."""
+
+    hidden: bool = Field(False, description="Whether model is hidden")
+    description: str = Field("", description="Model description")
+    tags: list[dict[str, str]] = Field(default_factory=list, description="Model tags")
+
+
+class WebUIModelInfoDetail(BaseModel):
+    """Model info wrapper for Open WebUI format."""
+
+    meta: WebUIModelMeta = Field(default_factory=WebUIModelMeta, description="Model metadata")
+
+
 class WebUIModelInfo(BaseModel):
     """Model information for Open WebUI format."""
 
@@ -66,6 +80,11 @@ class WebUIModelInfo(BaseModel):
     name: str = Field(..., description="Model display name")
     object: str = Field("model", description="Object type")
     owned_by: str = Field("echomind", description="Model owner")
+    info: WebUIModelInfoDetail = Field(
+        default_factory=WebUIModelInfoDetail, description="Model info"
+    )
+    actions: list[Any] = Field(default_factory=list, description="Model actions")
+    filters: list[Any] = Field(default_factory=list, description="Model filters")
 
 
 class WebUIModelsResponse(BaseModel):

@@ -1,12 +1,16 @@
 """Socket.IO server for real-time WebUI communication.
 
 Provides real-time bidirectional event-based communication
-for the Open WebUI frontend.
+matching the Open WebUI frontend Socket.IO protocol.
+
+The frontend connects with: io(url, { path: '/ws/socket.io', ... })
+Events expected: connect (with auth token), user-join, heartbeat, disconnect.
 """
 
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import socketio
@@ -17,24 +21,30 @@ logger = logging.getLogger(__name__)
 sio = socketio.AsyncServer(
     async_mode="asgi",
     cors_allowed_origins="*",
-    logger=False,  # Disable socket.io's verbose logging
+    logger=False,
     engineio_logger=False,
 )
 
-# Wrap in ASGI app
-socket_app = socketio.ASGIApp(sio)
+# Wrap in ASGI app with correct socketio_path
+# Frontend connects to /ws/socket.io, FastAPI mounts at /ws
+socket_app = socketio.ASGIApp(sio, socketio_path="/ws/socket.io")
 
 
 @sio.event
-async def connect(sid: str, environ: dict[str, Any]) -> None:
+async def connect(sid: str, environ: dict[str, Any], auth: dict[str, Any] | None = None) -> None:
     """
-    Handle client connection.
+    Handle client connection with optional token authentication.
 
     Args:
         sid: Socket session ID.
         environ: WSGI environment dict.
+        auth: Authentication data from client (contains 'token').
     """
-    logger.info(f"🌐 Socket.IO client connected: {sid}")
+    token = auth.get("token") if auth else None
+    if token:
+        logger.info(f"🌐 Socket.IO client connected: {sid} (authenticated)")
+    else:
+        logger.info(f"🌐 Socket.IO client connected: {sid} (anonymous)")
 
 
 @sio.event
@@ -48,93 +58,58 @@ async def disconnect(sid: str) -> None:
     logger.info(f"💔 Socket.IO client disconnected: {sid}")
 
 
-@sio.event
-async def join_room(sid: str, data: dict[str, Any]) -> None:
+@sio.on("user-join")
+async def user_join(sid: str, data: dict[str, Any] | None = None) -> None:
     """
-    Join a chat room for receiving chat-specific events.
+    Handle user-join event from Open WebUI frontend.
+
+    Called after connection to associate user with their session.
 
     Args:
         sid: Socket session ID.
-        data: Room data containing 'room' key.
+        data: User data (may contain user ID, token).
     """
-    room = data.get("room")
-    if not room:
-        logger.warning(f"⚠️ Client {sid} tried to join without room ID")
-        return
-
-    await sio.enter_room(sid, room)
-    logger.info(f"👥 Client {sid} joined room {room}")
-
-    # Notify user they joined successfully
-    await sio.emit("room_joined", {"room": room}, room=sid)
+    logger.info(f"👤 User joined via Socket.IO: {sid}")
 
 
-@sio.event
-async def leave_room(sid: str, data: dict[str, Any]) -> None:
+@sio.on("heartbeat")
+async def heartbeat(sid: str, data: dict[str, Any] | None = None) -> None:
     """
-    Leave a chat room.
+    Handle heartbeat event for tracking active users.
 
     Args:
         sid: Socket session ID.
-        data: Room data containing 'room' key.
+        data: Heartbeat data.
     """
-    room = data.get("room")
-    if not room:
-        logger.warning(f"⚠️ Client {sid} tried to leave without room ID")
-        return
-
-    await sio.leave_room(sid, room)
-    logger.info(f"👋 Client {sid} left room {room}")
+    logger.debug(f"💓 Heartbeat from {sid}")
 
 
-@sio.event
-async def ping(sid: str, data: dict[str, Any]) -> dict[str, str]:
+@sio.on("usage")
+async def usage(sid: str, data: dict[str, Any] | None = None) -> None:
     """
-    Handle ping/pong for connection health checks.
+    Handle usage tracking event.
 
     Args:
         sid: Socket session ID.
-        data: Ping data.
-
-    Returns:
-        Pong response.
+        data: Usage data (model, tokens, etc).
     """
-    logger.debug(f"🏓 Ping from {sid}")
-    return {"status": "pong"}
+    logger.debug(f"📊 Usage report from {sid}")
 
 
 # Utility functions for emitting events from other parts of the app
 
-async def emit_chat_message(room: str, message: dict[str, Any]) -> None:
+
+async def emit_chat_event(event: str, data: dict[str, Any], room: str | None = None) -> None:
     """
-    Emit a chat message to a specific room.
+    Emit a chat event to a specific room or all clients.
 
     Args:
-        room: Chat room ID.
-        message: Message data to broadcast.
+        event: Event name.
+        data: Event data to broadcast.
+        room: Optional room to target.
     """
-    await sio.emit("chat_message", message, room=room)
-    logger.debug(f"💬 Emitted message to room {room}")
-
-
-async def emit_chat_update(room: str, update: dict[str, Any]) -> None:
-    """
-    Emit a chat update event (e.g., typing indicator, edit).
-
-    Args:
-        room: Chat room ID.
-        update: Update data to broadcast.
-    """
-    await sio.emit("chat_update", update, room=room)
-    logger.debug(f"📝 Emitted update to room {room}")
-
-
-async def emit_model_status(status: dict[str, Any]) -> None:
-    """
-    Emit model status change to all connected clients.
-
-    Args:
-        status: Model status data.
-    """
-    await sio.emit("model_status", status)
-    logger.debug("🤖 Emitted model status update")
+    if room:
+        await sio.emit(event, data, room=room)
+    else:
+        await sio.emit(event, data)
+    logger.debug(f"📡 Emitted '{event}' to {room or 'all'}")

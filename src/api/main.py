@@ -450,8 +450,10 @@ def create_app() -> FastAPI:
             await handler.handle_connection(websocket, token)
 
     # Mount Socket.IO for Open WebUI real-time communication
-    app.mount("/ws/socket.io", socket_app)
-    logger.info("🌐 Socket.IO mounted at /ws/socket.io")
+    # Frontend connects with path: '/ws/socket.io', so mount at /ws
+    # and socketio_path is set in socket_app constructor
+    app.mount("/ws", socket_app)
+    logger.info("🌐 Socket.IO mounted at /ws (path: /ws/socket.io)")
 
     return app
 
