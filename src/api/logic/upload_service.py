@@ -228,9 +228,6 @@ class UploadService:
                 object_name=object_name,
                 expires=expires_in,
             )
-
-            # Rewrite internal endpoint to public endpoint for browser access
-            upload_url = self._rewrite_presigned_url(upload_url)
         except Exception as e:
             # Rollback document creation
             await self.db.delete(document)
@@ -387,36 +384,6 @@ class UploadService:
         logger.info(f"🚫 Aborted upload for document {document_id} by user {user.id}")
 
         return True
-
-    def _rewrite_presigned_url(self, url: str) -> str:
-        """
-        Rewrite a presigned URL to use the public MinIO endpoint.
-
-        MinIO presigned URLs are generated with the internal Docker endpoint
-        (e.g., http://minio:9000). The browser needs the external endpoint
-        (e.g., https://s3.demo.echomind.ch).
-
-        Args:
-            url: Presigned URL with internal endpoint.
-
-        Returns:
-            URL with public endpoint, or original URL if no public endpoint configured.
-        """
-        public_endpoint = self._settings.minio_public_endpoint
-        if not public_endpoint:
-            return url
-
-        # Internal URL: http://minio:9000/bucket/path?signature...
-        # Public URL:   https://s3.domain.com/bucket/path?signature...
-        internal_endpoint = self._settings.minio_endpoint
-        scheme = "https" if self._settings.minio_secure else "http"
-        internal_base = f"{scheme}://{internal_endpoint}"
-
-        # Ensure public endpoint has scheme
-        if not public_endpoint.startswith("http"):
-            public_endpoint = f"https://{public_endpoint}"
-
-        return url.replace(internal_base, public_endpoint, 1)
 
     async def _publish_document_process(
         self,

@@ -42,16 +42,20 @@ class MinIOClient:
         secret_key: str,
         secure: bool = False,
         region: str | None = None,
+        public_endpoint: str | None = None,
     ):
         """
         Initialize MinIO client.
-        
+
         Args:
-            endpoint: MinIO server endpoint (host:port)
-            access_key: Access key ID
-            secret_key: Secret access key
-            secure: Use HTTPS
-            region: Optional region
+            endpoint: MinIO server endpoint (host:port).
+            access_key: Access key ID.
+            secret_key: Secret access key.
+            secure: Use HTTPS.
+            region: Optional region.
+            public_endpoint: Public endpoint for presigned URLs (e.g.,
+                https://s3.demo.echomind.ch). If set, presigned URLs are
+                signed against this host so browsers can use them directly.
         """
         self._client = Minio(
             endpoint=endpoint,
@@ -60,6 +64,24 @@ class MinIOClient:
             secure=secure,
             region=region,
         )
+        self._presign_client: Minio | None = None
+        if public_endpoint:
+            if public_endpoint.startswith("https://"):
+                presign_secure = True
+                presign_host = public_endpoint[len("https://"):]
+            elif public_endpoint.startswith("http://"):
+                presign_secure = False
+                presign_host = public_endpoint[len("http://"):]
+            else:
+                presign_secure = True
+                presign_host = public_endpoint
+            self._presign_client = Minio(
+                endpoint=presign_host,
+                access_key=access_key,
+                secret_key=secret_key,
+                secure=presign_secure,
+                region=region,
+            )
     
     async def init(self) -> None:
         """Verify connectivity by listing buckets."""
@@ -176,6 +198,9 @@ class MinIOClient:
         """
         Generate a presigned URL for uploading (PUT).
 
+        Uses the public endpoint client if configured, so the signature
+        matches the host the browser will send the request to.
+
         Args:
             bucket_name: Bucket name.
             object_name: Object path.
@@ -184,7 +209,8 @@ class MinIOClient:
         Returns:
             Presigned PUT URL.
         """
-        return await self._client.presigned_put_object(
+        client = self._presign_client or self._client
+        return await client.presigned_put_object(
             bucket_name,
             object_name,
             expires=timedelta(seconds=expires),
@@ -268,17 +294,21 @@ class MinIOClient:
         expires: int = 3600,
     ) -> str:
         """
-        Generate a presigned URL for temporary access.
-        
+        Generate a presigned URL for temporary download access.
+
+        Uses the public endpoint client if configured, so the signature
+        matches the host the browser will send the request to.
+
         Args:
-            bucket_name: Bucket name
-            object_name: Object path
-            expires: URL validity in seconds
-        
+            bucket_name: Bucket name.
+            object_name: Object path.
+            expires: URL validity in seconds.
+
         Returns:
-            Presigned URL
+            Presigned URL.
         """
-        return await self._client.presigned_get_object(
+        client = self._presign_client or self._client
+        return await client.presigned_get_object(
             bucket_name, object_name, expires=expires
         )
 
@@ -299,6 +329,7 @@ async def init_minio(
     secret_key: str,
     secure: bool = False,
     ensure_buckets: list[str] | None = None,
+    public_endpoint: str | None = None,
 ) -> MinIOClient:
     """
     Initialize the global MinIO client.
@@ -309,6 +340,7 @@ async def init_minio(
         secret_key: Secret access key.
         secure: Use HTTPS.
         ensure_buckets: Optional list of bucket names to create if they don't exist.
+        public_endpoint: Public endpoint for browser-facing presigned URLs.
 
     Returns:
         Initialized MinIOClient instance.
@@ -319,6 +351,7 @@ async def init_minio(
         access_key=access_key,
         secret_key=secret_key,
         secure=secure,
+        public_endpoint=public_endpoint,
     )
     await _minio_client.init()
 

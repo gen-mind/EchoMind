@@ -212,6 +212,7 @@ async def _retry_minio_connection(settings: Settings) -> None:
                 secret_key=settings.minio_secret_key,
                 secure=settings.minio_secure,
                 ensure_buckets=MinioBuckets.all(),
+                public_endpoint=settings.minio_public_endpoint,
             )
             logger.info(f"📦 MinIO reconnected (buckets: {MinioBuckets.all()})")
             break

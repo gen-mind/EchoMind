@@ -813,99 +813,82 @@ class TestUploadServiceIntegration:
         mock_db.delete.assert_called()
 
 
-class TestPresignedUrlRewrite:
-    """Tests for _rewrite_presigned_url method."""
+class TestPresignedUrlPublicEndpoint:
+    """Tests for presigned URL generation with public endpoint."""
 
     @pytest.fixture
     def mock_db(self) -> AsyncMock:
         """Create a mock database session."""
         return AsyncMock()
 
-    @pytest.fixture
-    def mock_minio(self) -> MagicMock:
-        """Create a mock MinIO client."""
-        return MagicMock()
-
-    def test_rewrites_internal_to_public_endpoint(
-        self, mock_db: AsyncMock, mock_minio: MagicMock,
+    def test_presign_client_created_with_public_endpoint(
+        self, mock_db: AsyncMock,
     ) -> None:
-        """Test that internal Docker endpoint is replaced with public URL."""
-        service = UploadService(mock_db, minio=mock_minio)
-        service._settings = MagicMock()
-        service._settings.minio_endpoint = "minio:9000"
-        service._settings.minio_secure = False
-        service._settings.minio_public_endpoint = "https://s3.demo.echomind.ch"
+        """Test that MinIOClient creates a presign client when public_endpoint is set."""
+        from echomind_lib.db.minio import MinIOClient
 
-        internal_url = (
-            "http://minio:9000/echomind-documents/1/upload_abc/test.pdf"
-            "?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=abc123"
+        client = MinIOClient(
+            endpoint="minio:9000",
+            access_key="key",
+            secret_key="secret",
+            public_endpoint="https://s3.demo.echomind.ch",
         )
 
-        result = service._rewrite_presigned_url(internal_url)
+        assert client._presign_client is not None
+        assert client._presign_client._base_url.is_https
 
-        assert result.startswith("https://s3.demo.echomind.ch/echomind-documents/")
-        assert "X-Amz-Signature=abc123" in result
-        assert "minio:9000" not in result
-
-    def test_no_rewrite_when_public_endpoint_not_set(
-        self, mock_db: AsyncMock, mock_minio: MagicMock,
+    def test_no_presign_client_without_public_endpoint(
+        self, mock_db: AsyncMock,
     ) -> None:
-        """Test that URL is returned unchanged when no public endpoint configured."""
-        service = UploadService(mock_db, minio=mock_minio)
-        service._settings = MagicMock()
-        service._settings.minio_public_endpoint = None
+        """Test that no presign client is created when public_endpoint is None."""
+        from echomind_lib.db.minio import MinIOClient
 
-        internal_url = "http://minio:9000/bucket/path?signature=abc"
+        client = MinIOClient(
+            endpoint="minio:9000",
+            access_key="key",
+            secret_key="secret",
+        )
 
-        result = service._rewrite_presigned_url(internal_url)
+        assert client._presign_client is None
 
-        assert result == internal_url
+    def test_presign_client_parses_https(self) -> None:
+        """Test that https:// endpoint creates a secure presign client."""
+        from echomind_lib.db.minio import MinIOClient
 
-    def test_adds_https_scheme_if_missing(
-        self, mock_db: AsyncMock, mock_minio: MagicMock,
-    ) -> None:
-        """Test that https:// is added to public endpoint if no scheme specified."""
-        service = UploadService(mock_db, minio=mock_minio)
-        service._settings = MagicMock()
-        service._settings.minio_endpoint = "minio:9000"
-        service._settings.minio_secure = False
-        service._settings.minio_public_endpoint = "s3.demo.echomind.ch"
+        client = MinIOClient(
+            endpoint="minio:9000",
+            access_key="key",
+            secret_key="secret",
+            public_endpoint="https://s3.example.com",
+        )
 
-        internal_url = "http://minio:9000/bucket/path?signature=abc"
+        assert client._presign_client is not None
+        assert client._presign_client._base_url.is_https
 
-        result = service._rewrite_presigned_url(internal_url)
+    def test_presign_client_parses_http(self) -> None:
+        """Test that http:// endpoint creates a non-secure presign client."""
+        from echomind_lib.db.minio import MinIOClient
 
-        assert result.startswith("https://s3.demo.echomind.ch/bucket/path")
+        client = MinIOClient(
+            endpoint="minio:9000",
+            access_key="key",
+            secret_key="secret",
+            public_endpoint="http://s3.local:9000",
+        )
 
-    def test_preserves_query_params(
-        self, mock_db: AsyncMock, mock_minio: MagicMock,
-    ) -> None:
-        """Test that query parameters (signature, etc.) are preserved."""
-        service = UploadService(mock_db, minio=mock_minio)
-        service._settings = MagicMock()
-        service._settings.minio_endpoint = "minio:9000"
-        service._settings.minio_secure = False
-        service._settings.minio_public_endpoint = "https://s3.example.com"
+        assert client._presign_client is not None
+        assert not client._presign_client._base_url.is_https
 
-        query = "X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=key&X-Amz-Signature=sig"
-        internal_url = f"http://minio:9000/bucket/path?{query}"
+    def test_presign_client_defaults_to_https_without_scheme(self) -> None:
+        """Test that bare hostname defaults to HTTPS."""
+        from echomind_lib.db.minio import MinIOClient
 
-        result = service._rewrite_presigned_url(internal_url)
+        client = MinIOClient(
+            endpoint="minio:9000",
+            access_key="key",
+            secret_key="secret",
+            public_endpoint="s3.example.com",
+        )
 
-        assert query in result
-
-    def test_handles_secure_internal_endpoint(
-        self, mock_db: AsyncMock, mock_minio: MagicMock,
-    ) -> None:
-        """Test rewrite when internal MinIO uses HTTPS."""
-        service = UploadService(mock_db, minio=mock_minio)
-        service._settings = MagicMock()
-        service._settings.minio_endpoint = "minio:9000"
-        service._settings.minio_secure = True
-        service._settings.minio_public_endpoint = "https://s3.example.com"
-
-        internal_url = "https://minio:9000/bucket/path?sig=abc"
-
-        result = service._rewrite_presigned_url(internal_url)
-
-        assert result == "https://s3.example.com/bucket/path?sig=abc"
+        assert client._presign_client is not None
+        assert client._presign_client._base_url.is_https
