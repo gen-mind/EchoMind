@@ -310,12 +310,13 @@ services:
       - API_AUTH_AUDIENCE=${API_AUTH_AUDIENCE}
       - API_AUTH_JWKS_URL=${API_AUTH_JWKS_URL}
       # OAuth/OIDC for WebUI SSO login (reuses existing WEB_OIDC_* vars)
+      # Authentik uses global OAuth2 endpoints (not per-application)
       - API_OAUTH_CLIENT_ID=${WEB_OIDC_CLIENT_ID}
       - API_OAUTH_CLIENT_SECRET=${WEB_OIDC_CLIENT_SECRET}
       - API_OAUTH_PROVIDER_NAME=Authentik
-      - API_OAUTH_AUTHORIZE_URL=${WEB_OIDC_AUTHORITY}authorize/
-      - API_OAUTH_TOKEN_URL=${WEB_OIDC_AUTHORITY}token/
-      - API_OAUTH_USERINFO_URL=${WEB_OIDC_AUTHORITY}userinfo/
+      - API_OAUTH_AUTHORIZE_URL=${AUTHENTIK_URL}/application/o/authorize/
+      - API_OAUTH_TOKEN_URL=${AUTHENTIK_URL}/application/o/token/
+      - API_OAUTH_USERINFO_URL=${AUTHENTIK_URL}/application/o/userinfo/
       - API_OAUTH_REDIRECT_URI=https://${DOMAIN}/oauth/oidc/callback
       - API_OAUTH_SCOPE=${WEB_OIDC_SCOPE:-openid profile email}
     depends_on:
