@@ -19,6 +19,8 @@ unstructured-client>=0.25.0  # unstructured_io.py (PDF engine)
 aiohttp>=3.9.0             # llama.py (PDF engine)
 pillow>=10.0.0             # aggregators.py, transforms.py
 numpy>=1.26.0              # used throughout nv-ingest-api
+nvidia-riva-client>=2.20.0 # parakeet.py (audio extraction, imported at module level by extract.py)
+scipy>=1.10.0              # parakeet.py (wavfile, imported at module level by extract.py)
 
 # HTML processing
 beautifulsoup4>=4.12.0
@@ -29,8 +31,11 @@ transformers>=4.40.0
 torch>=2.0.0
 
 # gRPC (Embedder client)
-grpcio==1.69.0
-grpcio-tools==1.69.0
+# Pinned to 1.67.1 to match nvidia-riva-client requirement.
+# gRPC wire protocol is cross-version compatible, so 1.67.1 client
+# works fine with the embedder server running 1.69.0.
+grpcio==1.67.1
+grpcio-tools==1.67.1
 protobuf==5.29.5
 protobuf-pydantic-gen==0.1.8
 
