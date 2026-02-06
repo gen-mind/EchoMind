@@ -360,7 +360,7 @@ services:
       # Includes both /api/v1/* (EchoMind endpoints) and
       # /api/* (Open WebUI compatibility endpoints)
       # =============================================
-      - "traefik.http.routers.api-webui.rule=Host(`${DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/oauth`))"
+      - "traefik.http.routers.api-webui.rule=Host(`${DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/oauth`) || PathPrefix(`/ws`))"
       - "traefik.http.routers.api-webui.entrypoints=websecure"
       - "traefik.http.routers.api-webui.tls.certresolver=letsencrypt"
       - "traefik.http.routers.api-webui.middlewares=api-cors"
