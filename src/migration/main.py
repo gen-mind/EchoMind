@@ -90,6 +90,79 @@ def wait_for_db(database_url: str, retries: int = 5, delay: int = 5) -> bool:
     return False
 
 
+def _get_alembic_config(database_url: str) -> Config:
+    """
+    Create Alembic config with correct paths.
+
+    Args:
+        database_url: PostgreSQL connection URL.
+
+    Returns:
+        Configured Alembic Config object.
+
+    Raises:
+        SystemExit: If alembic.ini not found.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    alembic_ini = os.path.join(script_dir, "alembic.ini")
+
+    if not os.path.exists(alembic_ini):
+        logger.error(f"❌ alembic.ini not found at {alembic_ini}")
+        sys.exit(1)
+
+    alembic_cfg = Config(alembic_ini)
+    alembic_cfg.set_main_option("sqlalchemy.url", database_url)
+    alembic_cfg.set_main_option(
+        "script_location", os.path.join(script_dir, "migrations")
+    )
+    return alembic_cfg
+
+
+def log_available_migrations(database_url: str) -> None:
+    """
+    Log all available migration files and which are pending.
+
+    Args:
+        database_url: PostgreSQL connection URL.
+    """
+    try:
+        from alembic.script import ScriptDirectory
+        from alembic.runtime.migration import MigrationContext
+
+        alembic_cfg = _get_alembic_config(database_url)
+        script = ScriptDirectory.from_config(alembic_cfg)
+
+        engine = create_engine(database_url)
+        with engine.connect() as conn:
+            context = MigrationContext.configure(conn)
+            current_rev = context.get_current_revision()
+        engine.dispose()
+
+        # List all revisions in order
+        revisions = list(script.walk_revisions())
+        revisions.reverse()  # oldest first
+
+        # Build set of applied revisions by walking back from current
+        applied: set[str] = set()
+        if current_rev:
+            check = script.get_revision(current_rev)
+            while check is not None:
+                applied.add(check.revision)
+                down = check.down_revision
+                check = script.get_revision(down) if down else None
+
+        logger.info(f"📋 Found {len(revisions)} migration(s) in chain:")
+        for rev in revisions:
+            is_applied = rev.revision in applied
+            marker = "✅" if is_applied else "⏳"
+            label = "applied" if is_applied else "PENDING"
+            desc = rev.doc.split("\n")[0][:60] if rev.doc else "no description"
+            logger.info(f"  {marker} {rev.revision} - {desc} [{label}]")
+
+    except Exception as e:
+        logger.warning(f"⚠️ Could not list migrations: {e}")
+
+
 def run_migrations(database_url: str) -> None:
     """
     Run Alembic migrations to latest revision.
@@ -101,22 +174,7 @@ def run_migrations(database_url: str) -> None:
         SystemExit: If migrations fail.
     """
     try:
-        # Get path to alembic.ini relative to this file
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        alembic_ini = os.path.join(script_dir, "alembic.ini")
-
-        if not os.path.exists(alembic_ini):
-            logger.error(f"❌ alembic.ini not found at {alembic_ini}")
-            sys.exit(1)
-
-        # Create Alembic config
-        alembic_cfg = Config(alembic_ini)
-        alembic_cfg.set_main_option("sqlalchemy.url", database_url)
-
-        # Set script location relative to alembic.ini
-        alembic_cfg.set_main_option(
-            "script_location", os.path.join(script_dir, "migrations")
-        )
+        alembic_cfg = _get_alembic_config(database_url)
 
         logger.info("🚀 Running migrations...")
         command.upgrade(alembic_cfg, "head")
@@ -138,31 +196,17 @@ def get_current_revision(database_url: str) -> str | None:
         Current revision ID or None if no migrations applied.
     """
     try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        alembic_ini = os.path.join(script_dir, "alembic.ini")
-
-        alembic_cfg = Config(alembic_ini)
-        alembic_cfg.set_main_option("sqlalchemy.url", database_url)
-        alembic_cfg.set_main_option(
-            "script_location", os.path.join(script_dir, "migrations")
-        )
-
-        # Get current revision using Alembic's script directory
-        from alembic.script import ScriptDirectory
         from alembic.runtime.migration import MigrationContext
 
-        script = ScriptDirectory.from_config(alembic_cfg)
         engine = create_engine(database_url)
-
         with engine.connect() as conn:
             context = MigrationContext.configure(conn)
             current_rev = context.get_current_revision()
-
         engine.dispose()
         return current_rev
 
     except Exception as e:
-        logger.warning(f"Could not get current revision: {e}")
+        logger.warning(f"⚠️ Could not get current revision: {e}")
         return None
 
 
@@ -261,12 +305,22 @@ def main() -> None:
     # Log current state
     current_rev = get_current_revision(database_url)
     if current_rev:
-        logger.info(f"📍 Current revision: {current_rev}")
+        logger.info(f"📍 Current DB revision: {current_rev}")
     else:
         logger.info("📍 No migrations applied yet (fresh database)")
 
+    # Show all migrations and their status
+    log_available_migrations(database_url)
+
     # Run migrations
     run_migrations(database_url)
+
+    # Log post-migration state
+    new_rev = get_current_revision(database_url)
+    if new_rev != current_rev:
+        logger.info(f"📍 Upgraded: {current_rev} → {new_rev}")
+    else:
+        logger.info(f"📍 Already at latest revision: {new_rev}")
 
     # Verify critical schema objects exist after migration
     verify_schema(database_url)
