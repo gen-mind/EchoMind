@@ -31,7 +31,13 @@ router = APIRouter()
 
 
 class WebUIConfigResponse(BaseModel):
-    """Response model for /api/config endpoint."""
+    """Response model for /api/config endpoint.
+
+    Must include all nested objects the frontend accesses:
+    audio, permissions, code, file, ui, google_drive, onedrive.
+    Missing nested objects cause TypeError in frontend components.
+    [Source: Open WebUI main.py get_app_config()]
+    """
 
     status: bool = Field(True, description="Backend status")
     name: str = Field("EchoMind", description="Application name")
@@ -45,6 +51,16 @@ class WebUIConfigResponse(BaseModel):
     default_prompt_suggestions: list[dict[str, Any]] = Field(
         default_factory=list, description="Default prompt suggestions"
     )
+    # Nested objects required by authenticated frontend components
+    audio: dict[str, Any] = Field(default_factory=dict, description="Audio TTS/STT config")
+    permissions: dict[str, Any] = Field(default_factory=dict, description="User permissions")
+    code: dict[str, Any] = Field(default_factory=dict, description="Code execution config")
+    file: dict[str, Any] = Field(default_factory=dict, description="File upload config")
+    ui: dict[str, Any] = Field(default_factory=dict, description="UI overlay config")
+    google_drive: dict[str, Any] = Field(
+        default_factory=dict, description="Google Drive config"
+    )
+    onedrive: dict[str, Any] = Field(default_factory=dict, description="OneDrive config")
 
 
 class WebUIVersionResponse(BaseModel):
@@ -169,6 +185,58 @@ async def get_config(
         # OIDC provider configured (Authentik)
         oauth_providers["oidc"] = settings.oauth_provider_name
 
+    # Build nested objects only for authenticated users
+    # Frontend accesses $config.audio.tts.engine without full optional chaining
+    # [Source: Open WebUI CallOverlay.svelte, +layout.svelte]
+    audio = {}
+    permissions: dict[str, Any] = {}
+    code = {}
+    file_config = {}
+    ui = {}
+    google_drive = {}
+    onedrive = {}
+
+    if user:
+        audio = {
+            "tts": {"engine": "", "voice": "", "split_on": ""},
+            "stt": {"engine": ""},
+        }
+        permissions = {
+            "workspace": {
+                "models": True,
+                "knowledge": True,
+                "prompts": True,
+                "tools": True,
+            },
+            "chat": {
+                "controls": True,
+                "file_upload": True,
+                "delete": True,
+                "edit": True,
+                "share": True,
+                "export": True,
+                "temporary": True,
+                "temporary_enforced": False,
+            },
+            "features": {
+                "web_search": False,
+                "image_generation": False,
+                "code_interpreter": False,
+            },
+        }
+        code = {"engine": ""}
+        file_config = {
+            "max_size": 0,
+            "max_count": 0,
+            "image_compression": {"width": None, "height": None},
+        }
+        ui = {
+            "pending_user_overlay_title": "",
+            "pending_user_overlay_content": "",
+        }
+        google_drive = {"client_id": "", "api_key": ""}
+        onedrive = {"client_id_personal": "", "client_id_business": ""}
+
     return WebUIConfigResponse(
         status=True,
         name="EchoMind",
@@ -187,6 +255,13 @@ async def get_config(
                 "content": "Please summarize the main points from my uploaded documents.",
             },
         ],
+        audio=audio,
+        permissions=permissions,
+        code=code,
+        file=file_config,
+        ui=ui,
+        google_drive=google_drive,
+        onedrive=onedrive,
     )
 
 
