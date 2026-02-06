@@ -457,6 +457,22 @@ async def update_user_settings(user: OptionalVerifiedUser) -> dict[str, Any]:
     }
 
 
+@router.post("/v1/users/user/settings/update")
+async def update_user_settings_alt(user: OptionalVerifiedUser) -> dict[str, Any]:
+    """
+    Update user settings - alternative endpoint (stub).
+
+    Open WebUI calls this endpoint for settings updates.
+
+    Returns:
+        Updated settings.
+    """
+    return {
+        "ui": {},
+        "model_config": {},
+    }
+
+
 @router.get("/v1/configs/banners")
 async def get_banners() -> list[Any]:
     """
@@ -530,6 +546,84 @@ async def get_chats(user: OptionalVerifiedUser) -> list[Any]:
 
     Returns:
         Empty list of chats.
+    """
+    return []
+
+
+@router.get("/v1/chats/list")
+async def get_chats_list(user: OptionalVerifiedUser) -> list[Any]:
+    """
+    Get user chats list (stub).
+
+    Returns:
+        Empty list of chats.
+    """
+    return []
+
+
+@router.get("/v1/chats/tags/all")
+async def get_all_chat_tags(user: OptionalVerifiedUser) -> list[Any]:
+    """
+    Get all chat tags (stub).
+
+    Returns:
+        Empty list of tags.
+    """
+    return []
+
+
+@router.get("/v1/models/list")
+async def get_models_list(
+    user: OptionalVerifiedUser,
+    db: DbSession,
+) -> dict[str, Any]:
+    """
+    Get available models in Open WebUI format.
+
+    Returns:
+        List of available models.
+    """
+    # Fetch active LLMs from database
+    result = await db.execute(
+        select(LLMORM)
+        .where(LLMORM.deleted_date.is_(None))
+        .where(LLMORM.is_active == True)  # noqa: E712
+        .order_by(LLMORM.name)
+    )
+    db_llms = result.scalars().all()
+
+    models = [
+        {
+            "id": llm.model_id,
+            "name": llm.name,
+            "object": "model",
+            "owned_by": "echomind",
+            "info": {"meta": {}},
+        }
+        for llm in db_llms
+    ]
+
+    return {"models": models}
+
+
+@router.get("/v1/models/base")
+async def get_base_models(user: OptionalVerifiedUser) -> list[Any]:
+    """
+    Get base models (stub).
+
+    Returns:
+        Empty list.
+    """
+    return []
+
+
+@router.get("/v1/models/tags")
+async def get_model_tags(user: OptionalVerifiedUser) -> list[Any]:
+    """
+    Get model tags (stub).
+
+    Returns:
+        Empty list of tags.
     """
     return []
 
