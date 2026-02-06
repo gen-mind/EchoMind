@@ -41,7 +41,7 @@ class WebUIConfigResponse(BaseModel):
     features: dict[str, Any] = Field(
         default_factory=dict, description="Feature flags"
     )
-    default_models: list[str] = Field(default_factory=list, description="Default model IDs")
+    default_models: str = Field("", description="Comma-separated default model IDs")
     default_prompt_suggestions: list[dict[str, Any]] = Field(
         default_factory=list, description="Default prompt suggestions"
     )
@@ -157,7 +157,7 @@ async def get_config(
         default_locale="en-US",
         oauth={"providers": oauth_providers},
         features=features,
-        default_models=[],
+        default_models="",
         default_prompt_suggestions=[
             {
                 "title": ["Help me ", "with my research"],
@@ -566,6 +566,17 @@ async def get_chats_list(user: OptionalVerifiedUser) -> list[Any]:
 async def get_all_chat_tags(user: OptionalVerifiedUser) -> list[Any]:
     """
     Get all chat tags (stub).
+
+    Returns:
+        Empty list of tags.
+    """
+    return []
+
+
+@router.get("/v1/chats/all/tags")
+async def get_chats_all_tags(user: OptionalVerifiedUser) -> list[Any]:
+    """
+    Get all chat tags - alternative endpoint (stub).
 
     Returns:
         Empty list of tags.
