@@ -2,6 +2,7 @@
 
 # Core extraction (nv-ingest)
 nv-ingest-api>=26.1.0
+langdetect==1.0.9  # Undeclared nv-ingest-api dependency (used by adobe PDF engine)
 pypdfium2>=4.0.0
 pandas>=2.0.0
 
