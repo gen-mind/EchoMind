@@ -214,22 +214,34 @@ async def oauth_oidc_callback(
             # Use id_token if available (contains user claims), else access_token
             token_to_use = id_token or access_token
 
-            # Create response with redirect
+            # Determine redirect URL - use frontend URL if configured
+            frontend_url = settings.oauth_frontend_url or "/"
+            redirect_url = f"{frontend_url}/auth" if frontend_url != "/" else "/"
+
+            # Create response with redirect to frontend
             response = RedirectResponse(
-                url="/",
+                url=redirect_url,
                 status_code=status.HTTP_302_FOUND,
             )
 
             # Set token as cookie for frontend to read
-            response.set_cookie(
-                key="token",
-                value=token_to_use,
-                httponly=False,  # Frontend needs to read it
-                secure=True,
-                samesite="lax",
-                max_age=86400 * 7,  # 7 days
-                path="/",
-            )
+            # Use configured domain for cross-subdomain sharing
+            cookie_kwargs = {
+                "key": "token",
+                "value": token_to_use,
+                "httponly": False,  # Frontend JavaScript needs to read it
+                "secure": True,
+                "samesite": "lax",
+                "max_age": 86400 * 7,  # 7 days
+                "path": "/",
+            }
+
+            # Add domain if configured (e.g., ".demo.echomind.ch" for subdomain sharing)
+            if settings.oauth_cookie_domain:
+                cookie_kwargs["domain"] = settings.oauth_cookie_domain
+
+            response.set_cookie(**cookie_kwargs)
+            logger.info("🍪 Set token cookie, redirecting to %s", redirect_url)
 
             return response
 

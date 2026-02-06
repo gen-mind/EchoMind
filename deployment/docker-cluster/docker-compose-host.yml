@@ -319,6 +319,8 @@ services:
       - API_OAUTH_USERINFO_URL=${AUTHENTIK_URL}/application/o/userinfo/
       - API_OAUTH_REDIRECT_URI=https://${DOMAIN}/oauth/oidc/callback
       - API_OAUTH_SCOPE=${WEB_OIDC_SCOPE:-openid profile email}
+      - API_OAUTH_FRONTEND_URL=https://${DOMAIN}
+      - API_OAUTH_COOKIE_DOMAIN=.${DOMAIN}
     depends_on:
       postgres:
         condition: service_healthy

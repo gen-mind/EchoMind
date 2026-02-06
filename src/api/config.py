@@ -113,6 +113,14 @@ class Settings(BaseSettings):
         default="openid profile email",
         description="OAuth scopes to request",
     )
+    oauth_frontend_url: str | None = Field(
+        default=None,
+        description="Frontend URL for OAuth redirect (e.g., https://demo.echomind.ch)",
+    )
+    oauth_cookie_domain: str | None = Field(
+        default=None,
+        description="Cookie domain for cross-subdomain auth (e.g., .demo.echomind.ch)",
+    )
     
     
     # Embedder gRPC
