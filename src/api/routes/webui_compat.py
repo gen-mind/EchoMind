@@ -137,7 +137,7 @@ async def get_config(
     Returns:
         WebUIConfigResponse: Application configuration.
     """
-    logger.debug("📋 Config requested by user: %s", user.id if user else "anonymous")
+    logger.debug(f"📋 Config requested by user: {user.id if user else 'anonymous'}")
 
     # Use authenticated features if user is logged in
     features = AUTHENTICATED_FEATURES if user else DEFAULT_FEATURES
@@ -204,7 +204,7 @@ async def get_models(
         for llm in db_llms
     ]
 
-    logger.debug("📊 Returning %d models", len(models))
+    logger.debug(f"📊 Returning {len(models)} models")
     return WebUIModelsResponse(data=models)
 
 
@@ -708,7 +708,7 @@ async def get_session_user(
         validator = get_jwt_validator()
         token_user = validator.validate_token(token)
     except Exception as e:
-        logger.error("❌ Token validation failed: %s", e)
+        logger.error(f"❌ Token validation failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {str(e)}",
