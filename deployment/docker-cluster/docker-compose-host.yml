@@ -342,11 +342,13 @@ services:
       - "traefik.http.middlewares.api-cors.headers.addvaryheader=true"
       # =============================================
       # Path-based routing for WebUI domain
-      # Routes /api/v1/* from main domain to API backend
-      # This allows the SvelteKit frontend to call /api/v1/*
+      # Routes /api/* from main domain to API backend
+      # This allows the SvelteKit frontend to call /api/*
       # on same origin, with Traefik forwarding to EchoMind API
+      # Includes both /api/v1/* (EchoMind endpoints) and
+      # /api/* (Open WebUI compatibility endpoints)
       # =============================================
-      - "traefik.http.routers.api-webui.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/v1`)"
+      - "traefik.http.routers.api-webui.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)"
       - "traefik.http.routers.api-webui.entrypoints=websecure"
       - "traefik.http.routers.api-webui.tls.certresolver=letsencrypt"
       - "traefik.http.routers.api-webui.middlewares=api-cors"

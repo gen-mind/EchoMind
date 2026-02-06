@@ -128,6 +128,58 @@ async def get_current_user_optional(
 OptionalUser = Annotated[TokenUser | None, Depends(get_current_user_optional)]
 
 
+async def get_verified_user_optional(
+    authorization: Annotated[str | None, Header()] = None,
+    db: AsyncSession = Depends(get_db_session),
+) -> TokenUser | None:
+    """
+    Get the current verified user if authenticated, None otherwise.
+
+    Unlike OptionalUser, this also verifies the user exists in the database.
+
+    Usage:
+        @app.get("/public")
+        async def public_endpoint(user: OptionalVerifiedUser):
+            if user:
+                # authenticated and verified
+            else:
+                # anonymous
+    """
+    token = extract_bearer_token(authorization)
+    if not token:
+        return None
+
+    try:
+        validator = get_jwt_validator()
+        token_user = validator.validate_token(token)
+    except Exception:
+        return None
+
+    # Look up user in database by external_id (Authentik sub)
+    result = await db.execute(
+        select(UserORM).where(UserORM.external_id == token_user.external_id)
+    )
+    db_user = result.scalar_one_or_none()
+
+    if db_user is None:
+        return None
+
+    # Return TokenUser with the database user ID and roles from JWT
+    return TokenUser(
+        id=db_user.id,
+        email=db_user.email,
+        user_name=db_user.user_name,
+        first_name=db_user.first_name,
+        last_name=db_user.last_name,
+        roles=token_user.roles,
+        groups=token_user.groups,
+        external_id=db_user.external_id,
+    )
+
+
+OptionalVerifiedUser = Annotated[TokenUser | None, Depends(get_verified_user_optional)]
+
+
 def require_role(role: str):
     """
     Dependency factory to require a specific role.

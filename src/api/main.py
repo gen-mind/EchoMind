@@ -31,6 +31,7 @@ from api.routes import (
     teams,
     upload,
     users,
+    webui_compat,
 )
 from api.logic.embedder_client import close_embedder_client, init_embedder_client
 from api.logic.llm_client import close_llm_client
@@ -396,6 +397,12 @@ def create_app() -> FastAPI:
     # Register routers
     app.include_router(health.router, tags=["Health"])  # Root level for /health
     app.include_router(health.router, prefix="/api/v1", tags=["Health"])  # Versioned
+
+    # Open WebUI compatibility endpoints (without /v1 prefix)
+    # These enable the Open WebUI SvelteKit frontend to function with EchoMind backend
+    app.include_router(
+        webui_compat.router, prefix="/api", tags=["WebUI Compatibility"]
+    )
     app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
     app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
     app.include_router(
