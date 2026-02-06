@@ -15,6 +15,7 @@ from echomind_lib.db.models.base import (
     datetime,
     mapped_column,
     relationship,
+    utcnow,
 )
 
 if TYPE_CHECKING:
@@ -36,7 +37,7 @@ class LLM(Base):
     temperature: Mapped[float] = mapped_column(Numeric(3, 2), default=0.7)
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    creation_date: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    creation_date: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, default=utcnow)
     last_update: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     user_id_last_update: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
     deleted_date: Mapped[datetime | None] = mapped_column(TIMESTAMP)

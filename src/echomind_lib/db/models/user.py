@@ -16,6 +16,7 @@ from echomind_lib.db.models.base import (
     datetime,
     mapped_column,
     relationship,
+    utcnow,
 )
 
 if TYPE_CHECKING:
@@ -39,7 +40,7 @@ class User(Base):
     groups: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
     preferences: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    creation_date: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    creation_date: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, default=utcnow)
     last_update: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     user_id_last_update: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
     last_login: Mapped[datetime | None] = mapped_column(TIMESTAMP)

@@ -2,7 +2,7 @@
 ChatMessage, ChatMessageFeedback, and ChatMessageDocument CRUD operations.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Sequence
 
 from sqlalchemy import select, func
@@ -255,7 +255,7 @@ class ChatMessageFeedbackCRUD(CRUDBase[ChatMessageFeedback]):
         if existing:
             existing.is_positive = is_positive
             existing.feedback_text = feedback_text
-            existing.last_update = datetime.utcnow()
+            existing.last_update = datetime.now(timezone.utc)
             existing.user_id_last_update = user_id
             await session.flush()
             return existing

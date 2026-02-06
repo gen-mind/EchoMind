@@ -14,6 +14,7 @@ from echomind_lib.db.models.base import (
     datetime,
     mapped_column,
     relationship,
+    utcnow,
 )
 
 if TYPE_CHECKING:
@@ -33,7 +34,7 @@ class ChatSession(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False, default="New Chat")
     mode: Mapped[str] = mapped_column(String(20), nullable=False, default="chat")
     message_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    creation_date: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    creation_date: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, default=utcnow)
     last_update: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     user_id_last_update: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
     last_message_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)

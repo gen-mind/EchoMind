@@ -2,7 +2,7 @@
 Document CRUD operations.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Sequence
 
 from sqlalchemy import select, func
@@ -175,7 +175,7 @@ class DocumentCRUD(CRUDBase[Document]):
         if doc:
             doc.status = status
             doc.status_message = status_message
-            doc.last_update = datetime.utcnow()
+            doc.last_update = datetime.now(timezone.utc)
             if user_id:
                 doc.user_id_last_update = user_id
             await session.flush()
@@ -209,7 +209,7 @@ class DocumentCRUD(CRUDBase[Document]):
             doc.chunking_session = chunking_session
             doc.signature = signature
             doc.status = "completed"
-            doc.last_update = datetime.utcnow()
+            doc.last_update = datetime.now(timezone.utc)
             await session.flush()
             return doc
         return None

@@ -15,6 +15,7 @@ from echomind_lib.db.models.base import (
     datetime,
     mapped_column,
     relationship,
+    utcnow,
 )
 
 if TYPE_CHECKING:
@@ -40,7 +41,7 @@ class Document(Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
     status_message: Mapped[str | None] = mapped_column(Text)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
-    creation_date: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    creation_date: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, default=utcnow)
     last_update: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     user_id_last_update: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
     

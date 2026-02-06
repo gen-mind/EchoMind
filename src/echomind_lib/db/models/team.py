@@ -14,6 +14,7 @@ from echomind_lib.db.models.base import (
     datetime,
     mapped_column,
     relationship,
+    utcnow,
 )
 
 if TYPE_CHECKING:
@@ -32,7 +33,7 @@ class Team(Base):
     leader_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
     created_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     creation_date: Mapped[datetime] = mapped_column(
-        TIMESTAMP, nullable=False, default=datetime.utcnow
+        TIMESTAMP, nullable=False, default=utcnow
     )
     last_update: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     user_id_last_update: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
@@ -66,7 +67,7 @@ class TeamMember(Base):
     )
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="member")
     added_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP, nullable=False, default=datetime.utcnow
+        TIMESTAMP, nullable=False, default=utcnow
     )
     added_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
 
