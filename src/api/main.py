@@ -319,6 +319,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             secret_key=settings.minio_secret_key,
             secure=settings.minio_secure,
             ensure_buckets=MinioBuckets.all(),
+            public_endpoint=settings.minio_public_endpoint,
         )
         logger.info(f"📦 MinIO connected (buckets: {MinioBuckets.all()})")
     except Exception as e:
