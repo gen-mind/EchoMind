@@ -655,6 +655,28 @@ async def get_configs() -> dict[str, Any]:
 # =============================================================================
 
 
+@router.post("/v1/auths/update/timezone")
+async def update_user_timezone(user: OptionalVerifiedUser) -> dict[str, bool]:
+    """
+    Update user timezone (stub).
+
+    Returns:
+        Success status.
+    """
+    return {"success": True}
+
+
+@router.post("/v1/auths/update/profile")
+async def update_user_profile(user: OptionalVerifiedUser) -> dict[str, bool]:
+    """
+    Update user profile (stub).
+
+    Returns:
+        Success status.
+    """
+    return {"success": True}
+
+
 @router.get("/v1/auths/")
 async def get_session_user(
     request: Request,
