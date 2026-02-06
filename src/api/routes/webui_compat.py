@@ -11,6 +11,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -749,3 +750,47 @@ async def get_session_user(
         },
     }
 
+
+
+# =============================================================================
+# Image/Avatar Endpoints (for profile pictures)
+# =============================================================================
+
+
+@router.get("/v1/users/{user_id}/profile/image")
+async def get_user_profile_image(user_id: str) -> Response:
+    """
+    Get user profile image (returns placeholder SVG).
+
+    Args:
+        user_id: User ID.
+
+    Returns:
+        SVG placeholder image.
+    """
+    # Generate a simple SVG avatar with user emoji
+    svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="50" fill="#6366f1"/>
+        <text x="50" y="50" text-anchor="middle" dy=".35em" fill="white" font-size="40" font-family="Arial">
+            👤
+        </text>
+    </svg>"""
+    return Response(content=svg, media_type="image/svg+xml")
+
+
+@router.get("/v1/models/model/profile/image")
+async def get_model_profile_image() -> Response:
+    """
+    Get model profile image (returns placeholder SVG).
+
+    Returns:
+        SVG placeholder image.
+    """
+    # Generate a simple SVG icon for models
+    svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="50" fill="#10b981"/>
+        <text x="50" y="50" text-anchor="middle" dy=".35em" fill="white" font-size="40" font-family="Arial">
+            🤖
+        </text>
+    </svg>"""
+    return Response(content=svg, media_type="image/svg+xml")
