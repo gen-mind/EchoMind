@@ -258,76 +258,42 @@ class TestIngestorSettings:
         settings = IngestorSettings()
         assert settings.text_depth == "page"
 
-    def test_hf_token_required_for_gated_tokenizers(self) -> None:
-        """Test HF token validation for gated tokenizers.
+    def test_hf_token_optional_for_all_tokenizers(self) -> None:
+        """Test HF token is optional at runtime for all tokenizers.
 
-        meta-llama and nvidia/llama-nemotron models are gated and require
-        HuggingFace authentication. The validator must throw a CRITICAL
-        error if token is missing.
+        Models are pre-downloaded at Docker build time and cached locally.
+        Runtime runs in offline mode (HF_HUB_OFFLINE=1, TRANSFORMERS_OFFLINE=1),
+        so no HuggingFace authentication is needed at startup.
         """
-        # Llama-3.2 requires token (clear autouse fixture token)
-        with patch.dict(
-            os.environ,
-            {"INGESTOR_TOKENIZER": "meta-llama/Llama-3.2-1B"},
-            clear=False,
-        ):
-            # Remove the token set by fixture
-            os.environ.pop("INGESTOR_HF_ACCESS_TOKEN", None)
-            with pytest.raises(ValueError, match="CRITICAL.*HuggingFace access token is MANDATORY"):
-                IngestorSettings()
+        # Gated models work without token (pre-cached at build time)
+        for tokenizer in [
+            "meta-llama/Llama-3.2-1B",
+            "meta-llama/Llama-3-8B",
+            "nvidia/llama-nemotron-embed-1b-v2",
+        ]:
+            with patch.dict(
+                os.environ,
+                {"INGESTOR_TOKENIZER": tokenizer},
+                clear=False,
+            ):
+                os.environ.pop("INGESTOR_HF_ACCESS_TOKEN", None)
+                settings = IngestorSettings()
+                assert settings.tokenizer == tokenizer
+                assert settings.hf_access_token is None
 
-        # Llama-3 requires token
-        with patch.dict(
-            os.environ,
-            {"INGESTOR_TOKENIZER": "meta-llama/Llama-3-8B"},
-            clear=False,
-        ):
-            os.environ.pop("INGESTOR_HF_ACCESS_TOKEN", None)
-            with pytest.raises(ValueError, match="CRITICAL.*HuggingFace access token is MANDATORY"):
-                IngestorSettings()
-
-        # NVIDIA Nemotron requires token
-        with patch.dict(
-            os.environ,
-            {"INGESTOR_TOKENIZER": "nvidia/llama-nemotron-embed-1b-v2"},
-            clear=False,
-        ):
-            os.environ.pop("INGESTOR_HF_ACCESS_TOKEN", None)
-            with pytest.raises(ValueError, match="CRITICAL.*HuggingFace access token is MANDATORY"):
-                IngestorSettings()
-
-    def test_hf_token_not_required_for_non_gated_tokenizer(self) -> None:
-        """Test HF token is optional for non-gated tokenizers.
-
-        Only meta-llama tokenizers REQUIRE the token. Others may work
-        without it (with a warning logged).
-        """
+        # Non-gated models also work without token
         with patch.dict(
             os.environ,
             {"INGESTOR_TOKENIZER": "gpt2"},
             clear=False,
         ):
-            # Remove token set by fixture
             os.environ.pop("INGESTOR_HF_ACCESS_TOKEN", None)
             settings = IngestorSettings()
             assert settings.tokenizer == "gpt2"
             assert settings.hf_access_token is None
 
     def test_hf_token_accepted_when_provided(self) -> None:
-        """Test HF token is accepted when provided for gated tokenizers."""
-        # Test with Llama tokenizer
-        with patch.dict(
-            os.environ,
-            {
-                "INGESTOR_TOKENIZER": "meta-llama/Llama-3.2-1B",
-                "INGESTOR_HF_ACCESS_TOKEN": "hf_test_token_12345",
-            },
-        ):
-            settings = IngestorSettings()
-            assert settings.tokenizer == "meta-llama/Llama-3.2-1B"
-            assert settings.hf_access_token == "hf_test_token_12345"
-
-        # Test with NVIDIA Nemotron tokenizer
+        """Test HF token is accepted and stored when provided."""
         with patch.dict(
             os.environ,
             {
