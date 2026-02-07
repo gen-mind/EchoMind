@@ -1,1 +1,0 @@
-export { AssistantsPage } from './AssistantsPage'
