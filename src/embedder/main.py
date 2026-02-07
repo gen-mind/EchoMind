@@ -80,16 +80,44 @@ class EmbedServicer(EmbedServiceServicer):
 
         Returns:
             EmbedResponse with embedding vectors.
+
+        Raises:
+            INVALID_ARGUMENT: If texts list is empty or contains invalid strings.
         """
         start_time = time.time()
         texts_count = len(request.texts)
 
         try:
+            # Validate texts list is not empty
             if not request.texts:
                 context.abort(
                     grpc.StatusCode.INVALID_ARGUMENT,
                     "texts cannot be empty",
                 )
+
+            # Validate each text string
+            MIN_TEXT_LENGTH = 50
+            for idx, text in enumerate(request.texts):
+                # Check for empty strings
+                if not text:
+                    context.abort(
+                        grpc.StatusCode.INVALID_ARGUMENT,
+                        f"Text at index {idx} is empty",
+                    )
+
+                # Check for whitespace-only strings
+                if not text.strip():
+                    context.abort(
+                        grpc.StatusCode.INVALID_ARGUMENT,
+                        f"Text at index {idx} contains only whitespace",
+                    )
+
+                # Check minimum length
+                if len(text.strip()) < MIN_TEXT_LENGTH:
+                    context.abort(
+                        grpc.StatusCode.INVALID_ARGUMENT,
+                        f"Text at index {idx} is too short ({len(text.strip())} chars, minimum {MIN_TEXT_LENGTH})",
+                    )
 
             logger.info(f"📨 Embed request: {texts_count} texts")
 

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from api.logic.document_service import DocumentService
-from api.logic.exceptions import ForbiddenError, NotFoundError
+from api.logic.exceptions import ForbiddenError, NotFoundError, ServiceUnavailableError
 from api.logic.permissions import AccessResult
 
 
@@ -63,9 +63,24 @@ class TestDocumentService:
         return document
 
     @pytest.fixture
-    def service(self, mock_db):
+    def mock_qdrant(self):
+        """Create a mock Qdrant client."""
+        qdrant = AsyncMock()
+        qdrant.delete_by_filter = AsyncMock()
+        return qdrant
+
+    @pytest.fixture
+    def mock_minio(self):
+        """Create a mock MinIO client."""
+        minio = AsyncMock()
+        minio.file_exists = AsyncMock(return_value=True)
+        minio.delete_file = AsyncMock()
+        return minio
+
+    @pytest.fixture
+    def service(self, mock_db, mock_qdrant, mock_minio):
         """Create a DocumentService with mocked dependencies."""
-        return DocumentService(mock_db)
+        return DocumentService(mock_db, qdrant=mock_qdrant, minio=mock_minio)
 
     # =========================================================================
     # get_document tests
@@ -655,8 +670,9 @@ class TestDocumentDeletionCascade:
             "echomind-documents", "1/upload_abc123/test.pdf"
         )
 
-        # Verify DB deletion was called
+        # Verify DB deletion and commit were called
         mock_db.delete.assert_called_once_with(mock_document)
+        mock_db.commit.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_delete_document_team_collection(
@@ -690,12 +706,13 @@ class TestDocumentDeletionCascade:
         # Should use team_5 collection
         call_kwargs = mock_qdrant.delete_by_filter.call_args.kwargs
         assert call_kwargs["collection_name"] == "team_5"
+        mock_db.commit.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_delete_document_qdrant_failure_continues(
+    async def test_delete_document_qdrant_failure_raises(
         self, service, mock_db, mock_qdrant, mock_minio, mock_document, mock_user
     ):
-        """Test that Qdrant failure doesn't block DB deletion."""
+        """Test that Qdrant failure raises exception and blocks DB deletion."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_document
         mock_db.execute.return_value = mock_result
@@ -708,17 +725,19 @@ class TestDocumentDeletionCascade:
             "can_edit_document",
             return_value=AccessResult(True, "owner"),
         ):
-            # Should not raise
-            await service.delete_document(10, mock_user)
+            # Should raise
+            with pytest.raises(Exception, match="Qdrant connection failed"):
+                await service.delete_document(10, mock_user)
 
-        # DB deletion should still happen
-        mock_db.delete.assert_called_once_with(mock_document)
+        # DB deletion should NOT happen
+        mock_db.delete.assert_not_called()
+        mock_db.commit.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_delete_document_minio_failure_continues(
+    async def test_delete_document_minio_failure_raises(
         self, service, mock_db, mock_qdrant, mock_minio, mock_document, mock_user
     ):
-        """Test that MinIO failure doesn't block DB deletion."""
+        """Test that MinIO failure raises exception and blocks DB deletion."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_document
         mock_db.execute.return_value = mock_result
@@ -731,11 +750,13 @@ class TestDocumentDeletionCascade:
             "can_edit_document",
             return_value=AccessResult(True, "owner"),
         ):
-            # Should not raise
-            await service.delete_document(10, mock_user)
+            # Should raise
+            with pytest.raises(Exception, match="MinIO connection failed"):
+                await service.delete_document(10, mock_user)
 
-        # DB deletion should still happen
-        mock_db.delete.assert_called_once_with(mock_document)
+        # DB deletion should NOT happen
+        mock_db.delete.assert_not_called()
+        mock_db.commit.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_delete_document_file_not_in_minio(
@@ -760,12 +781,13 @@ class TestDocumentDeletionCascade:
         mock_minio.delete_file.assert_not_called()
         # But DB deletion should still happen
         mock_db.delete.assert_called_once_with(mock_document)
+        mock_db.commit.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_delete_document_without_qdrant_client(
+    async def test_delete_document_without_qdrant_client_raises(
         self, mock_db, mock_minio, mock_document, mock_user
     ):
-        """Test deletion works without Qdrant client (graceful degradation)."""
+        """Test deletion fails fast without Qdrant client."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_document
         mock_db.execute.return_value = mock_result
@@ -778,17 +800,20 @@ class TestDocumentDeletionCascade:
             "can_edit_document",
             return_value=AccessResult(True, "owner"),
         ):
-            await service.delete_document(10, mock_user)
+            # Should raise ServiceUnavailableError
+            with pytest.raises(ServiceUnavailableError, match="Qdrant"):
+                await service.delete_document(10, mock_user)
 
-        # MinIO and DB should still work
-        mock_minio.delete_file.assert_called_once()
-        mock_db.delete.assert_called_once()
+        # Nothing should be deleted
+        mock_minio.delete_file.assert_not_called()
+        mock_db.delete.assert_not_called()
+        mock_db.commit.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_delete_document_without_minio_client(
+    async def test_delete_document_without_minio_client_raises(
         self, mock_db, mock_qdrant, mock_document, mock_user
     ):
-        """Test deletion works without MinIO client (graceful degradation)."""
+        """Test deletion fails fast without MinIO client."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_document
         mock_db.execute.return_value = mock_result
@@ -801,11 +826,14 @@ class TestDocumentDeletionCascade:
             "can_edit_document",
             return_value=AccessResult(True, "owner"),
         ):
-            await service.delete_document(10, mock_user)
+            # Should raise ServiceUnavailableError
+            with pytest.raises(ServiceUnavailableError, match="MinIO"):
+                await service.delete_document(10, mock_user)
 
-        # Qdrant and DB should still work
-        mock_qdrant.delete_by_filter.assert_called_once()
-        mock_db.delete.assert_called_once()
+        # Nothing should be deleted
+        mock_qdrant.delete_by_filter.assert_not_called()
+        mock_db.delete.assert_not_called()
+        mock_db.commit.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_delete_document_no_url(
@@ -834,6 +862,7 @@ class TestDocumentDeletionCascade:
         # Qdrant and DB should still work
         mock_qdrant.delete_by_filter.assert_called_once()
         mock_db.delete.assert_called_once()
+        mock_db.commit.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_delete_document_org_collection(
@@ -866,3 +895,199 @@ class TestDocumentDeletionCascade:
         # Should use org_default collection
         call_kwargs = mock_qdrant.delete_by_filter.call_args.kwargs
         assert call_kwargs["collection_name"] == "org_default"
+        mock_db.commit.assert_called_once()
+
+
+class TestDocumentDeletionFailFast:
+    """Tests for fail-fast deletion behavior with strict consistency."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a mock database session."""
+        db = AsyncMock()
+        db.execute = AsyncMock()
+        db.delete = AsyncMock()
+        db.commit = AsyncMock()
+        return db
+
+    @pytest.fixture
+    def mock_qdrant(self):
+        """Create a mock Qdrant client."""
+        qdrant = AsyncMock()
+        qdrant.delete_by_filter = AsyncMock()
+        return qdrant
+
+    @pytest.fixture
+    def mock_minio(self):
+        """Create a mock MinIO client."""
+        minio = AsyncMock()
+        minio.file_exists = AsyncMock(return_value=True)
+        minio.delete_file = AsyncMock()
+        return minio
+
+    @pytest.fixture
+    def mock_user(self):
+        """Create a mock user."""
+        user = MagicMock()
+        user.id = 42
+        user.roles = ["echomind-allowed"]
+        return user
+
+    @pytest.fixture
+    def mock_connector(self, mock_user):
+        """Create a mock connector."""
+        connector = MagicMock()
+        connector.id = 1
+        connector.user_id = mock_user.id
+        connector.scope = "user"
+        connector.team_id = None
+        connector.deleted_date = None
+        return connector
+
+    @pytest.fixture
+    def mock_document(self, mock_connector):
+        """Create a mock document with MinIO path."""
+        document = MagicMock()
+        document.id = 10
+        document.connector_id = mock_connector.id
+        document.connector = mock_connector
+        document.url = "1/upload_abc123/test.pdf"
+        document.status = "analyzed"
+        document.title = "Test Document"
+        return document
+
+    @pytest.mark.asyncio
+    async def test_delete_fails_when_qdrant_unavailable(
+        self, mock_db, mock_minio, mock_document, mock_user
+    ):
+        """Test deletion raises ServiceUnavailableError when Qdrant is None."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_document
+        mock_db.execute.return_value = mock_result
+
+        # Create service without Qdrant
+        service = DocumentService(mock_db, qdrant=None, minio=mock_minio)
+
+        with patch.object(
+            service.permissions,
+            "can_edit_document",
+            return_value=AccessResult(True, "owner"),
+        ):
+            with pytest.raises(ServiceUnavailableError) as exc_info:
+                await service.delete_document(10, mock_user)
+
+            assert "Qdrant" in str(exc_info.value)
+            assert exc_info.value.status_code == 503
+
+        # Verify nothing was deleted
+        mock_minio.delete_file.assert_not_called()
+        mock_db.delete.assert_not_called()
+        mock_db.commit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delete_fails_when_minio_unavailable(
+        self, mock_db, mock_qdrant, mock_document, mock_user
+    ):
+        """Test deletion raises ServiceUnavailableError when MinIO is None."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_document
+        mock_db.execute.return_value = mock_result
+
+        # Create service without MinIO
+        service = DocumentService(mock_db, qdrant=mock_qdrant, minio=None)
+
+        with patch.object(
+            service.permissions,
+            "can_edit_document",
+            return_value=AccessResult(True, "owner"),
+        ):
+            with pytest.raises(ServiceUnavailableError) as exc_info:
+                await service.delete_document(10, mock_user)
+
+            assert "MinIO" in str(exc_info.value)
+            assert exc_info.value.status_code == 503
+
+        # Verify nothing was deleted
+        mock_qdrant.delete_by_filter.assert_not_called()
+        mock_db.delete.assert_not_called()
+        mock_db.commit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delete_fails_on_qdrant_error_before_db_delete(
+        self, mock_db, mock_qdrant, mock_minio, mock_document, mock_user
+    ):
+        """Test that Qdrant error prevents DB deletion (transactional)."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_document
+        mock_db.execute.return_value = mock_result
+
+        # Qdrant operation fails
+        mock_qdrant.delete_by_filter.side_effect = Exception("Qdrant timeout")
+
+        service = DocumentService(mock_db, qdrant=mock_qdrant, minio=mock_minio)
+
+        with patch.object(
+            service.permissions,
+            "can_edit_document",
+            return_value=AccessResult(True, "owner"),
+        ):
+            with pytest.raises(Exception, match="Qdrant timeout"):
+                await service.delete_document(10, mock_user)
+
+        # Verify DB was NOT modified
+        mock_db.delete.assert_not_called()
+        mock_db.commit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delete_fails_on_minio_error_before_db_delete(
+        self, mock_db, mock_qdrant, mock_minio, mock_document, mock_user
+    ):
+        """Test that MinIO error prevents DB deletion (transactional)."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_document
+        mock_db.execute.return_value = mock_result
+
+        # MinIO operation fails
+        mock_minio.delete_file.side_effect = Exception("MinIO connection refused")
+
+        service = DocumentService(mock_db, qdrant=mock_qdrant, minio=mock_minio)
+
+        with patch.object(
+            service.permissions,
+            "can_edit_document",
+            return_value=AccessResult(True, "owner"),
+        ):
+            with pytest.raises(Exception, match="MinIO connection refused"):
+                await service.delete_document(10, mock_user)
+
+        # Verify DB was NOT modified
+        mock_db.delete.assert_not_called()
+        mock_db.commit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delete_succeeds_commits_transaction(
+        self, mock_db, mock_qdrant, mock_minio, mock_document, mock_user
+    ):
+        """Test successful deletion commits DB transaction."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_document
+        mock_db.execute.return_value = mock_result
+
+        service = DocumentService(mock_db, qdrant=mock_qdrant, minio=mock_minio)
+
+        with patch.object(
+            service.permissions,
+            "can_edit_document",
+            return_value=AccessResult(True, "owner"),
+        ):
+            await service.delete_document(10, mock_user)
+
+        # Verify order: Qdrant → MinIO → DB delete → commit
+        mock_qdrant.delete_by_filter.assert_called_once()
+        mock_minio.delete_file.assert_called_once()
+        mock_db.delete.assert_called_once_with(mock_document)
+        mock_db.commit.assert_called_once()
+
+        # Verify commit was called AFTER delete
+        assert mock_db.delete.call_count == 1
+        assert mock_db.commit.call_count == 1

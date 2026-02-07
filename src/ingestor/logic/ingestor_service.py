@@ -28,6 +28,7 @@ from ingestor.logic.exceptions import (
     EmbeddingError,
     FileNotFoundInStorageError,
     MinioError,
+    NoExtractableContentError,
     OwnershipMismatchError,
 )
 
@@ -151,17 +152,11 @@ class IngestorService:
             )
 
             if not chunks and not structured_images:
-                logger.warning(f"⚠️ [id:{document_id}] No content extracted")
-                await self._update_status(
-                    document_id,
-                    "completed",
-                    chunk_count=0,
+                logger.error(f"❌ [id:{document_id}] No extractable content from {mime_type}")
+                raise NoExtractableContentError(
+                    document_id=document_id,
+                    mime_type=mime_type,
                 )
-                return {
-                    "document_id": document_id,
-                    "chunk_count": 0,
-                    "collection_name": None,
-                }
 
             # Build collection name based on scope
             collection_name = self._build_collection_name(

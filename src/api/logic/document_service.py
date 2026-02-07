@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api.config import get_settings
-from api.logic.exceptions import ForbiddenError, NotFoundError
+from api.logic.exceptions import ForbiddenError, NotFoundError, ServiceUnavailableError
 from api.logic.permissions import (
     SCOPE_GROUP,
     SCOPE_ORG,
@@ -159,22 +159,30 @@ class DocumentService:
         """
         Delete a document with full cascade cleanup.
 
-        Performs complete deletion:
-        1. Delete vectors from Qdrant (by document_id filter)
-        2. Delete file from MinIO
-        3. Delete database record
+        Performs atomic deletion:
+        1. Fail fast if storage services unavailable
+        2. Delete vectors from Qdrant (raises on failure)
+        3. Delete file from MinIO (raises on failure)
+        4. Delete database record (commit transaction)
 
         Requires edit access to the parent connector.
-        Qdrant/MinIO failures are logged but don't block DB deletion.
+        All operations must succeed or the entire deletion fails.
 
         Args:
             document_id: The document ID.
             user: The authenticated user.
 
         Raises:
+            ServiceUnavailableError: If Qdrant or MinIO unavailable.
             NotFoundError: If document not found.
             ForbiddenError: If user lacks permission to delete.
         """
+        # Fail fast if required services are unavailable
+        if not self._qdrant:
+            raise ServiceUnavailableError("Qdrant vector store")
+        if not self._minio:
+            raise ServiceUnavailableError("MinIO file storage")
+
         result = await self.db.execute(
             select(DocumentORM)
             .options(selectinload(DocumentORM.connector))
@@ -198,14 +206,18 @@ class DocumentService:
 
         connector = document.connector
 
+        # Delete external resources BEFORE DB transaction commit
+        # If these fail, exception propagates and DB transaction auto-rolls back
+
         # Step 1: Delete vectors from Qdrant
         await self._delete_document_vectors(document_id, connector, user.id)
 
         # Step 2: Delete file from MinIO
         await self._delete_document_file(document)
 
-        # Step 3: Delete database record
+        # Step 3: Delete database record and commit
         await self.db.delete(document)
+        await self.db.commit()
 
         logger.info(f"🗑️ Deleted document {document_id} by user {user.id}")
 
@@ -218,27 +230,26 @@ class DocumentService:
         """
         Delete all vectors for a document from Qdrant.
 
+        Raises exception on failure to ensure transactional consistency.
+
         Args:
             document_id: Document ID to filter by.
             connector: Parent connector (for collection name).
             user_id: User ID (for user-scoped collections).
-        """
-        if not self._qdrant:
-            logger.warning(
-                "⚠️ Qdrant client not available, skipping vector deletion for document %d",
-                document_id,
-            )
-            return
 
+        Raises:
+            Exception: If Qdrant deletion fails.
+        """
         collection_name = self._get_collection_for_connector(connector, user_id)
 
+        # Qdrant filter format for delete_by_filter
+        filter_ = {
+            "must": [
+                {"key": "document_id", "match": {"value": document_id}}
+            ]
+        }
+
         try:
-            # Qdrant filter format for delete_by_filter
-            filter_ = {
-                "must": [
-                    {"key": "document_id", "match": {"value": document_id}}
-                ]
-            }
             await self._qdrant.delete_by_filter(
                 collection_name=collection_name,
                 filter_=filter_,
@@ -249,28 +260,27 @@ class DocumentService:
                 collection_name,
             )
         except Exception as e:
-            # Log but don't fail - orphaned vectors are less critical than blocking deletion
-            logger.warning(
-                "⚠️ Failed to delete vectors for document %d from %s: %s",
+            logger.error(
+                "❌ Failed to delete vectors for document %d from %s: %s",
                 document_id,
                 collection_name,
                 e,
             )
+            raise  # Propagate exception to ensure transactional consistency
 
     async def _delete_document_file(self, document: DocumentORM) -> None:
         """
         Delete document file from MinIO.
 
+        Raises exception on failure to ensure transactional consistency.
+        Skips deletion if document has no URL (e.g., web content).
+
         Args:
             document: Document with url (MinIO object path).
-        """
-        if not self._minio:
-            logger.warning(
-                "⚠️ MinIO client not available, skipping file deletion for document %d",
-                document.id,
-            )
-            return
 
+        Raises:
+            Exception: If MinIO deletion fails.
+        """
         if not document.url:
             logger.debug(
                 "📄 Document %d has no file URL, skipping MinIO deletion",
@@ -292,16 +302,16 @@ class DocumentService:
                 )
             else:
                 logger.debug(
-                    "📄 File %s not found in MinIO, may have been deleted already",
+                    "📄 File %s not found in MinIO, already deleted",
                     object_name,
                 )
         except Exception as e:
-            # Log but don't fail - orphaned files are less critical than blocking deletion
-            logger.warning(
-                "⚠️ Failed to delete file %s from MinIO: %s",
+            logger.error(
+                "❌ Failed to delete file %s from MinIO: %s",
                 object_name,
                 e,
             )
+            raise  # Propagate exception to ensure transactional consistency
 
     async def search_documents(
         self,

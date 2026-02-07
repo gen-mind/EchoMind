@@ -810,3 +810,136 @@ class TestConnectorServiceRBAC:
             )
 
         assert result.name == "Updated by Lead"
+
+
+class TestConnectorServiceNATSFailFast:
+    """Tests for ConnectorService NATS fail-fast behavior."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a mock database session."""
+        return AsyncMock()
+
+    @pytest.fixture
+    def mock_user(self):
+        """Create a mock user."""
+        user = MagicMock()
+        user.id = 1
+        user.roles = ["echomind-allowed"]
+        return user
+
+    @pytest.fixture
+    def mock_connector(self, mock_user):
+        """Create a mock connector."""
+        connector = MagicMock()
+        connector.id = 1
+        connector.user_id = mock_user.id
+        connector.scope = "user"
+        connector.scope_id = None
+        connector.team_id = None
+        connector.status = "ready"
+        connector.type = "google_drive"
+        connector.config = {}
+        return connector
+
+    @pytest.mark.asyncio
+    async def test_trigger_sync_raises_when_nats_unavailable(
+        self, mock_db, mock_user, mock_connector
+    ):
+        """Test trigger_sync raises ServiceUnavailableError when NATS is None."""
+        from api.logic.exceptions import ServiceUnavailableError
+
+        # Create service WITHOUT NATS
+        service = ConnectorService(mock_db, nats_publisher=None)
+
+        # Mock database query
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_connector
+        mock_db.execute.return_value = mock_result
+
+        # Mock permission check
+        with patch.object(
+            service.permissions,
+            "can_edit_connector",
+            return_value=AccessResult(True, "owner"),
+        ):
+            with pytest.raises(ServiceUnavailableError) as exc_info:
+                await service.trigger_sync(
+                    connector_id=1,
+                    user=mock_user,
+                )
+
+            # Should raise ServiceUnavailableError with clear message
+            assert "NATS" in str(exc_info.value)
+            assert exc_info.value.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_trigger_sync_succeeds_with_nats(
+        self, mock_db, mock_user, mock_connector
+    ):
+        """Test trigger_sync works correctly when NATS is available."""
+        from echomind_lib.db.nats_publisher import JetStreamPublisher
+
+        # Create mock NATS publisher
+        mock_nats = AsyncMock(spec=JetStreamPublisher)
+        mock_nats.publish = AsyncMock()
+
+        # Create service WITH NATS
+        service = ConnectorService(mock_db, nats_publisher=mock_nats)
+
+        # Mock database query
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_connector
+        mock_db.execute.return_value = mock_result
+
+        # Mock permission check
+        with patch.object(
+            service.permissions,
+            "can_edit_connector",
+            return_value=AccessResult(True, "owner"),
+        ):
+            success, message = await service.trigger_sync(
+                connector_id=1,
+                user=mock_user,
+            )
+
+            # Should succeed
+            assert success is True
+            assert "triggered" in message.lower()
+
+            # Should have called NATS publish
+            mock_nats.publish.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_trigger_sync_fails_gracefully_when_already_syncing(
+        self, mock_db, mock_user, mock_connector
+    ):
+        """Test trigger_sync returns error message when sync already in progress."""
+        from echomind_lib.db.nats_publisher import JetStreamPublisher
+
+        mock_nats = AsyncMock(spec=JetStreamPublisher)
+        service = ConnectorService(mock_db, nats_publisher=mock_nats)
+
+        # Set connector status to syncing
+        mock_connector.status = "syncing"
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_connector
+        mock_db.execute.return_value = mock_result
+
+        with patch.object(
+            service.permissions,
+            "can_edit_connector",
+            return_value=AccessResult(True, "owner"),
+        ):
+            success, message = await service.trigger_sync(
+                connector_id=1,
+                user=mock_user,
+            )
+
+            # Should return graceful error (not exception)
+            assert success is False
+            assert "already in progress" in message.lower()
+
+            # Should NOT have called NATS
+            mock_nats.publish.assert_not_called()

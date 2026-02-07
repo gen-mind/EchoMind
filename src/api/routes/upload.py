@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from fastapi import APIRouter
 
 from api.converters import orm_to_document
-from api.dependencies import CurrentUser, DbSession, NatsPublisher
+from api.dependencies import CurrentUser, DbSession, MinioClient, NatsPublisher
 from api.logic.upload_service import UploadService
 from echomind_lib.models.public import Document
 
@@ -73,6 +73,7 @@ async def initiate_upload(
     request: InitiateUploadRequest,
     user: CurrentUser,
     db: DbSession,
+    minio: MinioClient,
 ) -> InitiateUploadResponse:
     """
     Initiate a file upload.
@@ -88,6 +89,7 @@ async def initiate_upload(
         request: Upload initiation parameters.
         user: The authenticated user.
         db: Database session.
+        minio: MinIO client for file storage.
 
     Returns:
         InitiateUploadResponse with document ID and upload URL.
@@ -96,7 +98,7 @@ async def initiate_upload(
         HTTPException 422: If file type or size is invalid.
         HTTPException 503: If MinIO is unavailable.
     """
-    service = UploadService(db)
+    service = UploadService(db, minio=minio)
     result = await service.initiate_upload(
         filename=request.filename,
         content_type=request.content_type,
@@ -117,6 +119,7 @@ async def complete_upload(
     request: CompleteUploadRequest,
     user: CurrentUser,
     db: DbSession,
+    minio: MinioClient,
     nats: NatsPublisher,
 ) -> Document:
     """
@@ -129,6 +132,7 @@ async def complete_upload(
         request: Upload completion parameters.
         user: The authenticated user.
         db: Database session.
+        minio: MinIO client for file storage.
         nats: NATS publisher for document processing events.
 
     Returns:
@@ -139,7 +143,7 @@ async def complete_upload(
         HTTPException 422: If document not in "uploading" status or file not in MinIO.
         HTTPException 503: If MinIO is unavailable.
     """
-    service = UploadService(db, nats=nats)
+    service = UploadService(db, minio=minio, nats=nats)
     document = await service.complete_upload(
         document_id=request.document_id,
         user=user,
@@ -153,6 +157,7 @@ async def abort_upload(
     request: AbortUploadRequest,
     user: CurrentUser,
     db: DbSession,
+    minio: MinioClient,
 ) -> AbortUploadResponse:
     """
     Abort a file upload.
@@ -164,6 +169,7 @@ async def abort_upload(
         request: Upload abort parameters.
         user: The authenticated user.
         db: Database session.
+        minio: MinIO client for file storage.
 
     Returns:
         AbortUploadResponse indicating success.
@@ -171,8 +177,9 @@ async def abort_upload(
     Raises:
         HTTPException 404: If document not found or not owned by user.
         HTTPException 422: If document not in "uploading" status.
+        HTTPException 503: If MinIO is unavailable.
     """
-    service = UploadService(db)
+    service = UploadService(db, minio=minio)
     success = await service.abort_upload(
         document_id=request.document_id,
         user=user,

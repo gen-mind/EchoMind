@@ -398,10 +398,10 @@ class UploadService:
             connector: The document's connector.
         """
         if not self._nats:
-            logger.warning(
-                "⚠️ NATS not available, skipping document.process publish"
+            logger.error(
+                "❌ NATS publisher required for document processing but not available"
             )
-            return
+            raise ServiceUnavailableError("NATS message queue")
 
         # Import protobuf message
         from echomind_lib.models.internal.orchestrator_pb2 import (  # type: ignore[import-untyped]

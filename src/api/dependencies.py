@@ -271,3 +271,27 @@ def get_minio_client() -> "MinIOClient | None":
 
 
 MinioClient = Annotated["MinIOClient | None", Depends(get_minio_client)]
+
+
+def get_qdrant_client() -> "QdrantDB | None":
+    """
+    Get the Qdrant client if available.
+
+    Returns None if Qdrant is not initialized (graceful degradation).
+
+    Usage:
+        @app.post("/documents/search")
+        async def search(qdrant: QdrantClient):
+            if qdrant:
+                await qdrant.search(...)
+    """
+    from echomind_lib.db.qdrant import QdrantDB, get_qdrant
+
+    try:
+        return get_qdrant()
+    except RuntimeError:
+        # Qdrant not initialized - return None for graceful degradation
+        return None
+
+
+QdrantClient = Annotated["QdrantDB | None", Depends(get_qdrant_client)]

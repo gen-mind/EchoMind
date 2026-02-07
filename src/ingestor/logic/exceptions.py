@@ -323,6 +323,35 @@ class TextExtractionError(ExtractionError):
         super().__init__("text", reason, document_id, is_transient)
 
 
+class NoExtractableContentError(IngestorError):
+    """
+    Raised when document extraction produces no content chunks.
+
+    Terminal error - file may be empty, corrupt, or unsupported format variant.
+    Retrying will not help unless file is replaced.
+    """
+
+    def __init__(
+        self,
+        document_id: int,
+        mime_type: str | None = None,
+    ) -> None:
+        """
+        Initialize NoExtractableContentError.
+
+        Args:
+            document_id: Document ID that produced no content.
+            mime_type: Optional MIME type of the file.
+        """
+        self.document_id = document_id
+        self.mime_type = mime_type
+        msg = f"No extractable content from document {document_id}"
+        if mime_type:
+            msg += f" (type: {mime_type})"
+        msg += ". File may be empty, corrupt, or use unsupported format variant."
+        super().__init__(msg)
+
+
 class ChunkingError(IngestorError):
     """
     Raised when tokenizer-based chunking fails.
