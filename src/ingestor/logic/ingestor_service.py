@@ -118,7 +118,7 @@ class IngestorService:
             ChunkingError: If chunking fails.
             EmbeddingError: If embedding generation fails.
         """
-        logger.info(f"🔄 Processing document {document_id} (path: {minio_path}, session: {chunking_session})")
+        logger.debug(f"[id:{document_id}] Starting (path: {minio_path}, session: {chunking_session})")
 
         # Load document from database with connector relationship
         document = await self._get_document(document_id)
@@ -134,7 +134,7 @@ class IngestorService:
 
         try:
             # Download file from MinIO
-            logger.info(f"📥 Downloading from MinIO: {minio_path}")
+            logger.debug(f"[id:{document_id}] Downloading from MinIO: {minio_path}")
             file_bytes = await self._download_file(minio_path)
 
             # Get file metadata
@@ -142,7 +142,7 @@ class IngestorService:
             mime_type = document.content_type or "application/octet-stream"
 
             # Extract and chunk content
-            logger.info(f"📄 Extracting and chunking: {file_name} ({mime_type})")
+            logger.info(f"📥 [id:{document_id}] Received {file_name} ({mime_type})")
             chunks, structured_images = await self._processor.process(
                 file_bytes=file_bytes,
                 document_id=document_id,
@@ -151,7 +151,7 @@ class IngestorService:
             )
 
             if not chunks and not structured_images:
-                logger.warning(f"⚠️ No content extracted from document {document_id}")
+                logger.warning(f"⚠️ [id:{document_id}] No content extracted")
                 await self._update_status(
                     document_id,
                     "completed",
@@ -178,7 +178,7 @@ class IngestorService:
             # Embed and store text chunks
             total_stored = 0
             if chunks:
-                logger.info(f"🧠 Embedding {len(chunks)} text chunks")
+                logger.info(f"🧠 [id:{document_id}] Embedding {len(chunks)} chunks")
                 stored = await self._embed_and_store(
                     texts=chunks,
                     document_id=document_id,
@@ -190,7 +190,7 @@ class IngestorService:
 
             # Handle structured images (tables/charts)
             if structured_images and self._settings.yolox_enabled:
-                logger.info(f"🖼️ {len(structured_images)} structured images extracted (multimodal embedding not implemented)")
+                logger.info(f"🖼️ [id:{document_id}] {len(structured_images)} structured images (multimodal embedding not implemented)")
                 # TODO: Implement multimodal embedding when embedder supports it
 
             # Update document status
@@ -201,7 +201,7 @@ class IngestorService:
                 chunking_session=chunking_session,
             )
 
-            logger.info(f"✅ Document {document_id} processed: {total_stored} chunks in {collection_name}")
+            logger.info(f"✅ [id:{document_id}] Done: {total_stored} chunks in {collection_name}")
 
             return {
                 "document_id": document_id,
@@ -210,7 +210,7 @@ class IngestorService:
             }
 
         except Exception as e:
-            logger.exception(f"❌ Processing failed for document {document_id}")
+            logger.exception(f"❌ [id:{document_id}] Processing failed")
             await self._update_status(
                 document_id,
                 "error",
@@ -507,7 +507,7 @@ class IngestorService:
             ids=ids,
         )
 
-        logger.info(f"💾 Stored {len(vectors)} vectors in {collection_name}")
+        logger.info(f"💾 [id:{document_id}] Stored {len(vectors)} vectors in {collection_name}")
 
         return len(vectors)
 

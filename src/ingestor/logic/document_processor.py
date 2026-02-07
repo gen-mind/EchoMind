@@ -114,7 +114,7 @@ class DocumentProcessor:
         if not self._router.is_supported(mime_type):
             raise UnsupportedMimeTypeError(mime_type)
 
-        logger.info(f"📄 Processing document {document_id}: {file_name} ({mime_type})")
+        logger.debug(f"[id:{document_id}] Extracting {file_name} ({mime_type})")
 
         # Build input DataFrame
         df = self._build_dataframe(file_bytes, document_id, file_name, mime_type)
@@ -128,7 +128,7 @@ class DocumentProcessor:
         # Extract structured images (tables/charts)
         structured_images = self._extract_structured_images(extracted_df)
 
-        logger.info(f"🏁 Processed document {document_id}: {len(chunks)} chunks, {len(structured_images)} images")
+        logger.debug(f"[id:{document_id}] Extracted: {len(chunks)} chunks, {len(structured_images)} images")
 
         return chunks, structured_images
 
@@ -345,7 +345,7 @@ class DocumentProcessor:
         except UnsupportedMimeTypeError:
             raise
         except Exception as e:
-            logger.exception(f"❌ Extraction failed for document {document_id}: {e}")
+            logger.exception(f"❌ [id:{document_id}] Extraction failed: {e}")
 
             # Raise type-specific exception for better error handling
             error_cls = _EXTRACTOR_ERROR_MAP.get(extractor_type)
@@ -507,12 +507,12 @@ class DocumentProcessor:
                 if text and isinstance(text, str) and text.strip():
                     chunks.append(text.strip())
 
-            logger.info(f"✂️ Chunked document {document_id}: {len(chunks)} chunks (size={self._settings.chunk_size}, overlap={self._settings.chunk_overlap})")
+            logger.info(f"✂️ [id:{document_id}] Chunked: {len(chunks)} chunks")
 
             return chunks
 
         except Exception as e:
-            logger.exception(f"❌ Chunking failed for document {document_id}: {e}")
+            logger.exception(f"❌ [id:{document_id}] Chunking failed: {e}")
             raise ChunkingError(str(e), document_id) from e
 
     def _extract_structured_images(self, df: pd.DataFrame) -> list[bytes]:

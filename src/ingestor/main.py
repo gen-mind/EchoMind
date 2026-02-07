@@ -329,7 +329,7 @@ class IngestorApp:
             request = DocumentProcessRequest.from_protobuf(proto_request)
             document_id = request.document_id
 
-            logger.info(f"📥 Processing document {document_id} (path: {request.minio_path})")
+            logger.debug(f"[id:{document_id}] NATS message received (path: {request.minio_path})")
 
             # Get database session and clients
             db = get_db_manager()
@@ -368,14 +368,14 @@ class IngestorApp:
 
                     # ACK message on success
                     await msg.ack()
-                    logger.info(f"✅ Document {document_id} processed: {result.get('chunk_count', 0)} chunks")
+                    # Main completion log is in ingestor_service.py
 
                 finally:
                     await service.close()
 
         except IngestorError as e:
             error_info = await handle_ingestor_error(e)
-            logger.error(f"❌ Ingestor error for document {document_id}: {e.message}")
+            logger.error(f"❌ [id:{document_id}] {e.message}")
 
             if error_info["should_retry"]:
                 await msg.nak()  # NATS will redeliver
@@ -383,12 +383,12 @@ class IngestorApp:
                 await msg.term()  # Terminal failure, don't retry
 
         except Exception as e:
-            logger.exception(f"💀 Unexpected error processing document {document_id}: {e}")
+            logger.exception(f"💀 [id:{document_id}] Unexpected error: {e}")
             await msg.nak()  # Allow retry for unexpected errors
 
         finally:
             elapsed = asyncio.get_event_loop().time() - start_time
-            logger.info(f"⏰ Elapsed: {elapsed:.2f}s")
+            logger.info(f"⏰ [id:{document_id}] Elapsed: {elapsed:.2f}s")
 
     async def stop(self) -> None:
         """

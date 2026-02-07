@@ -99,7 +99,7 @@ class EmbedderClient:
                 timeout=self._timeout,
             )
             self._dimension = response.dimension
-            logger.info(f"📐 Embedder dimension: {response.dimension} (model: {response.model_id})")
+            logger.debug(f"Embedder dimension: {response.dimension} (model: {response.model_id})")
             return response.dimension
 
         except grpc.aio.AioRpcError as e:
@@ -147,7 +147,7 @@ class EmbedderClient:
                 for embedding in response.embeddings
             ]
 
-            logger.info(f"🎯 Embedded {len(vectors)} texts for document {document_id or 'N/A'}")
+            logger.debug(f"[id:{document_id or 'N/A'}] Embedded {len(vectors)} texts")
 
             return vectors
 
