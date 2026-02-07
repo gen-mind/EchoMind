@@ -31,7 +31,6 @@ logger = logging.getLogger(__name__)
 # RBAC role names (Authentik groups)
 ROLE_ALLOWED = "echomind-allowed"
 ROLE_ADMIN = "echomind-admins"
-ROLE_SUPERADMIN = "echomind-superadmins"
 
 # Connector scopes
 SCOPE_USER = "user"
@@ -85,11 +84,7 @@ class PermissionChecker:
         Returns:
             True if user has echomind-allowed or higher role.
         """
-        return (
-            ROLE_ALLOWED in user.roles
-            or ROLE_ADMIN in user.roles
-            or ROLE_SUPERADMIN in user.roles
-        )
+        return ROLE_ALLOWED in user.roles or ROLE_ADMIN in user.roles
 
     def is_admin(self, user: "TokenUser") -> bool:
         """
@@ -99,21 +94,9 @@ class PermissionChecker:
             user: The authenticated user.
 
         Returns:
-            True if user has echomind-admins or echomind-superadmins role.
+            True if user has echomind-admins role.
         """
-        return ROLE_ADMIN in user.roles or ROLE_SUPERADMIN in user.roles
-
-    def is_superadmin(self, user: "TokenUser") -> bool:
-        """
-        Check if user has superadmin privileges.
-
-        Args:
-            user: The authenticated user.
-
-        Returns:
-            True if user has echomind-superadmins role.
-        """
-        return ROLE_SUPERADMIN in user.roles
+        return ROLE_ADMIN in user.roles
 
     # =========================================================================
     # Team Helpers
@@ -202,7 +185,7 @@ class PermissionChecker:
         Check if user can view a connector.
 
         Rules:
-        - Superadmin: Can view all connectors
+        - Admin: Can view all connectors
         - User scope: Owner only
         - Team scope: Team members
         - Org scope: All allowed users
@@ -214,9 +197,9 @@ class PermissionChecker:
         Returns:
             AccessResult with allowed status and reason.
         """
-        # Superadmins can view everything
-        if self.is_superadmin(user):
-            return AccessResult(True, "superadmin")
+        # Admins can view everything
+        if self.is_admin(user):
+            return AccessResult(True, "admin")
 
         # Check by scope
         scope = connector.scope or SCOPE_USER
@@ -256,10 +239,10 @@ class PermissionChecker:
         Check if user can edit a connector.
 
         Rules:
-        - Superadmin: Can edit all connectors
+        - Admin: Can edit all connectors
         - User scope: Owner only
         - Team scope: Team leads and admins who are members
-        - Org scope: Superadmin only
+        - Org scope: Admin only
 
         Args:
             user: The authenticated user.
@@ -268,9 +251,9 @@ class PermissionChecker:
         Returns:
             AccessResult with allowed status and reason.
         """
-        # Superadmins can edit everything
-        if self.is_superadmin(user):
-            return AccessResult(True, "superadmin")
+        # Admins can edit everything
+        if self.is_admin(user):
+            return AccessResult(True, "admin")
 
         scope = connector.scope or SCOPE_USER
 
@@ -300,8 +283,8 @@ class PermissionChecker:
             return AccessResult(False, "team connector without team_id")
 
         if scope == SCOPE_ORG:
-            # Org scope - superadmin only (already checked above)
-            return AccessResult(False, "org connectors require superadmin")
+            # Org scope - admin only (already checked above)
+            return AccessResult(False, "org connectors require admin")
 
         return AccessResult(False, f"unknown scope: {scope}")
 
@@ -317,7 +300,7 @@ class PermissionChecker:
         Rules:
         - User scope: All allowed users
         - Team scope: Admins who are team members
-        - Org scope: Superadmin only
+        - Org scope: Admin only
 
         Args:
             user: The authenticated user.
@@ -346,9 +329,9 @@ class PermissionChecker:
             return AccessResult(False, "must be a member of the team")
 
         if scope == SCOPE_ORG:
-            if self.is_superadmin(user):
-                return AccessResult(True, "superadmin")
-            return AccessResult(False, "superadmin required for org connectors")
+            if self.is_admin(user):
+                return AccessResult(True, "admin")
+            return AccessResult(False, "admin required for org connectors")
 
         return AccessResult(False, f"unknown scope: {scope}")
 
@@ -430,8 +413,8 @@ class PermissionChecker:
         Returns:
             List of connector IDs user can view.
         """
-        # Superadmins can see all
-        if self.is_superadmin(user):
+        # Admins can see all
+        if self.is_admin(user):
             result = await self.db.execute(
                 select(ConnectorORM.id).where(ConnectorORM.deleted_date.is_(None))
             )

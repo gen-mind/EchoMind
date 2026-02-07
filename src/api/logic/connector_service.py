@@ -121,8 +121,8 @@ class ConnectorService:
         team_ids = await self.permissions.get_user_team_ids(user.id)
 
         # Build base query with RBAC filters
-        if self.permissions.is_superadmin(user):
-            # Superadmins see all
+        if self.permissions.is_admin(user):
+            # Admins see all
             query = select(ConnectorORM).where(ConnectorORM.deleted_date.is_(None))
         else:
             # Regular users see: own + team + org connectors

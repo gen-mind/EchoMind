@@ -106,14 +106,7 @@ class JWTValidator:
 
         # Map Authentik groups to application roles
         # Higher levels include all lower level roles
-        if "echomind-superadmins" in groups:
-            if "superadmin" not in roles:
-                roles.append("superadmin")
-            if "admin" not in roles:
-                roles.append("admin")
-            if "user" not in roles:
-                roles.append("user")
-        elif "echomind-admins" in groups:
+        if "echomind-admins" in groups:
             if "admin" not in roles:
                 roles.append("admin")
             if "user" not in roles:

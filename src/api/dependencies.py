@@ -225,7 +225,6 @@ def require_any_role(*roles: str):
 
 
 AdminUser = Annotated[TokenUser, Depends(require_role("admin"))]
-SuperAdminUser = Annotated[TokenUser, Depends(require_role("superadmin"))]
 
 
 def get_nats() -> JetStreamPublisher | None:

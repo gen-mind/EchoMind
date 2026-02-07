@@ -920,7 +920,7 @@ async def get_session_user(
         "id": str(db_user.id),
         "email": db_user.email,
         "name": f"{db_user.first_name} {db_user.last_name}".strip() or db_user.user_name,
-        "role": "admin" if "superadmin" in (db_user.roles or []) else "user",
+        "role": "admin" if "admin" in (db_user.roles or []) else "user",
         "profile_image_url": f"/api/v1/users/{db_user.id}/profile/image",
         "token": token,  # Return the token back
         "expires_at": expires_at,  # For frontend token expiry timer

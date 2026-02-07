@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from api.dependencies import DbSession, SuperAdminUser
+from api.dependencies import AdminUser, DbSession
 from echomind_lib.db.models import LLM as LLMORM
 from echomind_lib.models.public import (
     CreateLLMRequest,
@@ -27,7 +27,7 @@ class TestLLMResponse(BaseModel):
 
 @router.get("", response_model=ListLLMsResponse)
 async def list_llms(
-    user: SuperAdminUser,
+    user: AdminUser,
     db: DbSession,
     page: int = 1,
     limit: int = 20,
@@ -147,7 +147,7 @@ def _orm_to_pydantic(db_llm: LLMORM) -> LLM:
 @router.post("", response_model=LLM, status_code=status.HTTP_201_CREATED)
 async def create_llm(
     data: CreateLLMRequest,
-    user: SuperAdminUser,
+    user: AdminUser,
     db: DbSession,
 ) -> LLM:
     """
@@ -184,7 +184,7 @@ async def create_llm(
 @router.get("/{llm_id}", response_model=LLM)
 async def get_llm(
     llm_id: int,
-    user: SuperAdminUser,
+    user: AdminUser,
     db: DbSession,
 ) -> LLM:
     """
@@ -221,7 +221,7 @@ async def get_llm(
 async def update_llm(
     llm_id: int,
     data: UpdateLLMRequest,
-    user: SuperAdminUser,
+    user: AdminUser,
     db: DbSession,
 ) -> LLM:
     """
@@ -279,7 +279,7 @@ async def update_llm(
 @router.delete("/{llm_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_llm(
     llm_id: int,
-    user: SuperAdminUser,
+    user: AdminUser,
     db: DbSession,
 ) -> None:
     """
@@ -313,7 +313,7 @@ async def delete_llm(
 @router.post("/{llm_id}/test", response_model=TestLLMResponse)
 async def test_llm_connection(
     llm_id: int,
-    user: SuperAdminUser,
+    user: AdminUser,
     db: DbSession,
 ) -> TestLLMResponse:
     """

@@ -13,7 +13,6 @@ from api.logic.exceptions import DuplicateError, ForbiddenError, NotFoundError
 from api.logic.team_service import (
     ROLE_ADMIN,
     ROLE_ALLOWED,
-    ROLE_SUPERADMIN,
     TeamService,
     _role_enum_to_str,
     _role_str_to_enum,
@@ -120,40 +119,27 @@ class TestTeamService:
         assert service._is_admin([ROLE_ADMIN])
         assert service._is_admin([ROLE_ALLOWED, ROLE_ADMIN])
 
-    def test_is_admin_with_superadmin_role(self, service) -> None:
-        """Test admin detection with superadmin role."""
-        assert service._is_admin([ROLE_SUPERADMIN])
-
     def test_is_admin_without_admin_role(self, service) -> None:
         """Test admin detection without admin role."""
         assert not service._is_admin([ROLE_ALLOWED])
         assert not service._is_admin([])
-
-    def test_is_superadmin_with_superadmin_role(self, service) -> None:
-        """Test superadmin detection."""
-        assert service._is_superadmin([ROLE_SUPERADMIN])
-
-    def test_is_superadmin_with_admin_role(self, service) -> None:
-        """Test superadmin detection with only admin role."""
-        assert not service._is_superadmin([ROLE_ADMIN])
 
     # =========================================================================
     # _check_team_access tests
     # =========================================================================
 
     @pytest.mark.asyncio
-    async def test_check_team_access_superadmin(self, service, mock_team) -> None:
-        """Test superadmins have full access."""
+    async def test_check_team_access_admin_full_access(self, service, mock_team) -> None:
+        """Test admins have full access without require_lead."""
         with patch.object(service, "db") as mock_db:
             with patch("api.logic.team_service.team_crud") as mock_crud:
                 mock_crud.get_by_id = AsyncMock(return_value=mock_team)
 
                 result = await service._check_team_access(
-                    1, 99, [ROLE_SUPERADMIN], require_lead=True
+                    1, 99, [ROLE_ADMIN], require_lead=False
                 )
 
                 assert result == mock_team
-                mock_crud.is_lead.assert_not_called()  # Superadmin skips check
 
     @pytest.mark.asyncio
     async def test_check_team_access_not_found(self, service) -> None:

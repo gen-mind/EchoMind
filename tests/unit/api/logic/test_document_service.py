@@ -507,11 +507,11 @@ class TestDocumentServiceRBAC:
         assert result == document
 
     @pytest.mark.asyncio
-    async def test_superadmin_can_view_any_document(self, service, mock_db):
-        """Test superadmin can view any document."""
+    async def test_admin_can_view_any_document(self, service, mock_db):
+        """Test admin can view any document."""
         user = MagicMock()
         user.id = 1
-        user.roles = ["echomind-superadmins"]
+        user.roles = ["echomind-allowed", "echomind-admins"]
 
         connector = MagicMock()
         connector.id = 1
@@ -529,7 +529,7 @@ class TestDocumentServiceRBAC:
         with patch.object(
             service.permissions,
             "can_view_document",
-            return_value=AccessResult(True, "superadmin"),
+            return_value=AccessResult(True, "admin"),
         ):
             result = await service.get_document(100, user)
 

@@ -52,14 +52,6 @@ class TestConnectorService:
         return user
 
     @pytest.fixture
-    def mock_superadmin_user(self):
-        """Create a mock superadmin TokenUser."""
-        user = MagicMock()
-        user.id = 1
-        user.roles = ["echomind-allowed", "echomind-admins", "echomind-superadmins"]
-        return user
-
-    @pytest.fixture
     def mock_connector(self, mock_user):
         """Create a mock connector ORM object."""
         connector = MagicMock()
@@ -158,7 +150,7 @@ class TestConnectorService:
             return_value=[1, 2],
         ), patch.object(
             service.permissions,
-            "is_superadmin",
+            "is_admin",
             return_value=False,
         ):
             result = await service.list_connectors(mock_user)
@@ -167,20 +159,20 @@ class TestConnectorService:
         assert result[0] == mock_connector
 
     @pytest.mark.asyncio
-    async def test_list_connectors_superadmin_sees_all(
-        self, service, mock_db, mock_connector, mock_superadmin_user
+    async def test_list_connectors_admin_sees_all(
+        self, service, mock_db, mock_connector, mock_admin_user
     ):
-        """Test superadmin can list all connectors."""
+        """Test admin can list all connectors."""
         mock_result = MagicMock()
         mock_result.scalars.return_value.all.return_value = [mock_connector]
         mock_db.execute.return_value = mock_result
 
         with patch.object(
             service.permissions,
-            "is_superadmin",
+            "is_admin",
             return_value=True,
         ):
-            result = await service.list_connectors(mock_superadmin_user)
+            result = await service.list_connectors(mock_admin_user)
 
         assert len(result) == 1
 
@@ -245,24 +237,24 @@ class TestConnectorService:
         assert "admin" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
-    async def test_create_connector_org_scope_requires_superadmin(
-        self, service, mock_db, mock_admin_user
+    async def test_create_connector_org_scope_requires_admin(
+        self, service, mock_db, mock_user
     ):
-        """Test creating org-scoped connector requires superadmin."""
+        """Test creating org-scoped connector requires admin."""
         with patch.object(
             service.permissions,
             "can_create_connector",
-            return_value=AccessResult(False, "superadmin required"),
+            return_value=AccessResult(False, "admin required"),
         ):
             with pytest.raises(ForbiddenError) as exc_info:
                 await service.create_connector(
                     name="Org Connector",
                     connector_type="google_drive",
-                    user=mock_admin_user,
+                    user=mock_user,
                     scope="org",
                 )
 
-        assert "superadmin" in str(exc_info.value).lower()
+        assert "admin" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
     async def test_create_connector_without_sync(
@@ -724,11 +716,11 @@ class TestConnectorServiceRBAC:
         assert result == connector
 
     @pytest.mark.asyncio
-    async def test_superadmin_can_view_any_connector(self, service, mock_db):
-        """Test superadmin can view any connector."""
+    async def test_admin_can_view_any_connector(self, service, mock_db):
+        """Test admin can view any connector."""
         user = MagicMock()
         user.id = 1
-        user.roles = ["echomind-superadmins"]
+        user.roles = ["echomind-allowed", "echomind-admins"]
 
         connector = MagicMock()
         connector.id = 1
@@ -743,7 +735,7 @@ class TestConnectorServiceRBAC:
         with patch.object(
             service.permissions,
             "can_view_connector",
-            return_value=AccessResult(True, "superadmin"),
+            return_value=AccessResult(True, "admin"),
         ):
             result = await service.get_connector(1, user)
 

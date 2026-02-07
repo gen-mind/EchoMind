@@ -6,8 +6,8 @@ interface RequireRoleProps {
   children: ReactNode
   /** Feature permission required to access this content */
   feature?: string
-  /** Minimum level required: 'allowed', 'admin', or 'superadmin' */
-  level?: 'allowed' | 'admin' | 'superadmin'
+  /** Minimum level required: 'allowed' or 'admin' */
+  level?: 'allowed' | 'admin'
   /** Where to redirect if access is denied (default: /) */
   redirectTo?: string
   /** Content to show if access is denied (instead of redirect) */
@@ -30,7 +30,7 @@ interface RequireRoleProps {
  * />
  *
  * // Protect by level
- * <RequireRole level="superadmin">
+ * <RequireRole level="admin">
  *   <InfrastructurePage />
  * </RequireRole>
  *
@@ -64,9 +64,6 @@ export function RequireRole({
         break
       case 'admin':
         hasAccess = isAdmin
-        break
-      case 'superadmin':
-        hasAccess = isSuperAdmin
         break
     }
     if (!hasAccess) {

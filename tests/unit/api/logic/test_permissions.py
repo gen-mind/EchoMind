@@ -11,7 +11,6 @@ import pytest
 from api.logic.permissions import (
     ROLE_ADMIN,
     ROLE_ALLOWED,
-    ROLE_SUPERADMIN,
     SCOPE_GROUP,
     SCOPE_ORG,
     SCOPE_TEAM,
@@ -36,8 +35,8 @@ class TestAccessResult:
 
     def test_access_result_stores_reason(self):
         """Test that AccessResult stores the reason."""
-        result = AccessResult(allowed=True, reason="superadmin")
-        assert result.reason == "superadmin"
+        result = AccessResult(allowed=True, reason="admin")
+        assert result.reason == "admin"
 
 
 class TestPermissionCheckerRoles:
@@ -70,14 +69,6 @@ class TestPermissionCheckerRoles:
         return user
 
     @pytest.fixture
-    def superadmin_user(self):
-        """Create a user with echomind-superadmins role."""
-        user = MagicMock()
-        user.id = 3
-        user.roles = [ROLE_ALLOWED, ROLE_ADMIN, ROLE_SUPERADMIN]
-        return user
-
-    @pytest.fixture
     def no_role_user(self):
         """Create a user with no roles."""
         user = MagicMock()
@@ -97,10 +88,6 @@ class TestPermissionCheckerRoles:
         """Test is_allowed returns True for users with echomind-admins."""
         assert checker.is_allowed(admin_user) is True
 
-    def test_is_allowed_with_superadmin_role(self, checker, superadmin_user):
-        """Test is_allowed returns True for superadmins."""
-        assert checker.is_allowed(superadmin_user) is True
-
     def test_is_allowed_with_no_role(self, checker, no_role_user):
         """Test is_allowed returns False for users with no roles."""
         assert checker.is_allowed(no_role_user) is False
@@ -117,25 +104,9 @@ class TestPermissionCheckerRoles:
         """Test is_admin returns True for users with echomind-admins."""
         assert checker.is_admin(admin_user) is True
 
-    def test_is_admin_with_superadmin_role(self, checker, superadmin_user):
-        """Test is_admin returns True for superadmins."""
-        assert checker.is_admin(superadmin_user) is True
-
-    # =========================================================================
-    # is_superadmin tests
-    # =========================================================================
-
-    def test_is_superadmin_with_allowed_role(self, checker, allowed_user):
-        """Test is_superadmin returns False for regular allowed users."""
-        assert checker.is_superadmin(allowed_user) is False
-
-    def test_is_superadmin_with_admin_role(self, checker, admin_user):
-        """Test is_superadmin returns False for admins."""
-        assert checker.is_superadmin(admin_user) is False
-
-    def test_is_superadmin_with_superadmin_role(self, checker, superadmin_user):
-        """Test is_superadmin returns True for superadmins."""
-        assert checker.is_superadmin(superadmin_user) is True
+    def test_is_admin_with_no_role(self, checker, no_role_user):
+        """Test is_admin returns False for users with no roles."""
+        assert checker.is_admin(no_role_user) is False
 
 
 class TestPermissionCheckerTeams:
@@ -342,14 +313,6 @@ class TestPermissionCheckerConnectorView:
         return PermissionChecker(mock_db)
 
     @pytest.fixture
-    def superadmin_user(self):
-        """Create a superadmin user."""
-        user = MagicMock()
-        user.id = 1
-        user.roles = [ROLE_SUPERADMIN]
-        return user
-
-    @pytest.fixture
     def admin_user(self):
         """Create an admin user."""
         user = MagicMock()
@@ -396,18 +359,18 @@ class TestPermissionCheckerConnectorView:
         return connector
 
     # =========================================================================
-    # Superadmin access
+    # Admin access
     # =========================================================================
 
     @pytest.mark.asyncio
-    async def test_superadmin_can_view_any_connector(
-        self, checker, superadmin_user, user_connector
+    async def test_admin_can_view_any_connector(
+        self, checker, admin_user, user_connector
     ):
-        """Test superadmin can view any connector."""
-        result = await checker.can_view_connector(superadmin_user, user_connector)
+        """Test admin can view any connector."""
+        result = await checker.can_view_connector(admin_user, user_connector)
 
         assert result.allowed is True
-        assert result.reason == "superadmin"
+        assert result.reason == "admin"
 
     # =========================================================================
     # User scope
@@ -424,11 +387,14 @@ class TestPermissionCheckerConnectorView:
         assert result.reason == "owner"
 
     @pytest.mark.asyncio
-    async def test_non_owner_cannot_view_user_connector(
-        self, checker, admin_user, user_connector
+    async def test_non_owner_non_admin_cannot_view_user_connector(
+        self, checker, user_connector
     ):
-        """Test non-owner cannot view user-scoped connector."""
-        result = await checker.can_view_connector(admin_user, user_connector)
+        """Test non-owner non-admin cannot view user-scoped connector."""
+        other_user = MagicMock()
+        other_user.id = 999
+        other_user.roles = [ROLE_ALLOWED]
+        result = await checker.can_view_connector(other_user, user_connector)
 
         assert result.allowed is False
         assert "not owner" in result.reason
@@ -528,14 +494,6 @@ class TestPermissionCheckerConnectorEdit:
         return PermissionChecker(mock_db)
 
     @pytest.fixture
-    def superadmin_user(self):
-        """Create a superadmin user."""
-        user = MagicMock()
-        user.id = 1
-        user.roles = [ROLE_SUPERADMIN]
-        return user
-
-    @pytest.fixture
     def admin_user(self):
         """Create an admin user."""
         user = MagicMock()
@@ -582,18 +540,18 @@ class TestPermissionCheckerConnectorEdit:
         return connector
 
     # =========================================================================
-    # Superadmin access
+    # Admin access
     # =========================================================================
 
     @pytest.mark.asyncio
-    async def test_superadmin_can_edit_any_connector(
-        self, checker, superadmin_user, org_connector
+    async def test_admin_can_edit_any_connector(
+        self, checker, admin_user, org_connector
     ):
-        """Test superadmin can edit any connector."""
-        result = await checker.can_edit_connector(superadmin_user, org_connector)
+        """Test admin can edit any connector."""
+        result = await checker.can_edit_connector(admin_user, org_connector)
 
         assert result.allowed is True
-        assert result.reason == "superadmin"
+        assert result.reason == "admin"
 
     # =========================================================================
     # User scope
@@ -610,11 +568,14 @@ class TestPermissionCheckerConnectorEdit:
         assert result.reason == "owner"
 
     @pytest.mark.asyncio
-    async def test_non_owner_cannot_edit_user_connector(
-        self, checker, admin_user, user_connector
+    async def test_non_owner_non_admin_cannot_edit_user_connector(
+        self, checker, user_connector
     ):
-        """Test non-owner cannot edit user-scoped connector."""
-        result = await checker.can_edit_connector(admin_user, user_connector)
+        """Test non-owner non-admin cannot edit user-scoped connector."""
+        other_user = MagicMock()
+        other_user.id = 999
+        other_user.roles = [ROLE_ALLOWED]
+        result = await checker.can_edit_connector(other_user, user_connector)
 
         assert result.allowed is False
 
@@ -641,28 +602,14 @@ class TestPermissionCheckerConnectorEdit:
         assert "team lead" in result.reason
 
     @pytest.mark.asyncio
-    async def test_admin_team_member_can_edit_team_connector(
+    async def test_admin_can_edit_team_connector(
         self, checker, admin_user, team_connector, mock_db
     ):
-        """Test admin who is team member can edit team-scoped connector."""
-        # Not team leader
-        mock_team = MagicMock()
-        mock_team.leader_id = 999
+        """Test admin can edit team-scoped connector (early return as admin)."""
+        result = await checker.can_edit_connector(admin_user, team_connector)
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_team
-        mock_db.execute.return_value = mock_result
-
-        with pytest.MonkeyPatch.context() as mp:
-            mock_crud = MagicMock()
-            mock_crud.is_lead = AsyncMock(return_value=False)
-            mock_crud.get_team_ids_for_user = AsyncMock(return_value=[10])  # Is team member
-            mp.setattr("api.logic.permissions.team_crud", mock_crud)
-
-            result = await checker.can_edit_connector(admin_user, team_connector)
-
-            assert result.allowed is True
-            assert "admin team member" in result.reason
+        assert result.allowed is True
+        assert result.reason == "admin"
 
     @pytest.mark.asyncio
     async def test_regular_member_cannot_edit_team_connector(
@@ -692,14 +639,17 @@ class TestPermissionCheckerConnectorEdit:
     # =========================================================================
 
     @pytest.mark.asyncio
-    async def test_admin_cannot_edit_org_connector(
-        self, checker, admin_user, org_connector
+    async def test_allowed_user_cannot_edit_org_connector_without_admin(
+        self, checker, org_connector
     ):
-        """Test admin cannot edit org-scoped connector."""
-        result = await checker.can_edit_connector(admin_user, org_connector)
+        """Test non-admin cannot edit org-scoped connector."""
+        user = MagicMock()
+        user.id = 99
+        user.roles = [ROLE_ALLOWED]
+        result = await checker.can_edit_connector(user, org_connector)
 
         assert result.allowed is False
-        assert "superadmin" in result.reason
+        assert "admin" in result.reason
 
     @pytest.mark.asyncio
     async def test_allowed_user_cannot_edit_org_connector(
@@ -725,14 +675,6 @@ class TestPermissionCheckerConnectorCreate:
     def checker(self, mock_db):
         """Create a PermissionChecker instance."""
         return PermissionChecker(mock_db)
-
-    @pytest.fixture
-    def superadmin_user(self):
-        """Create a superadmin user."""
-        user = MagicMock()
-        user.id = 1
-        user.roles = [ROLE_SUPERADMIN]
-        return user
 
     @pytest.fixture
     def admin_user(self):
@@ -831,23 +773,24 @@ class TestPermissionCheckerConnectorCreate:
     # =========================================================================
 
     @pytest.mark.asyncio
-    async def test_superadmin_can_create_org_connector(
-        self, checker, superadmin_user
-    ):
-        """Test superadmin can create org-scoped connector."""
-        result = await checker.can_create_connector(superadmin_user, SCOPE_ORG)
-
-        assert result.allowed is True
-
-    @pytest.mark.asyncio
-    async def test_admin_cannot_create_org_connector(
+    async def test_admin_can_create_org_connector(
         self, checker, admin_user
     ):
-        """Test admin cannot create org-scoped connector."""
+        """Test admin can create org-scoped connector."""
         result = await checker.can_create_connector(admin_user, SCOPE_ORG)
 
+        assert result.allowed is True
+        assert result.reason == "admin"
+
+    @pytest.mark.asyncio
+    async def test_allowed_user_cannot_create_org_connector(
+        self, checker, allowed_user
+    ):
+        """Test non-admin cannot create org-scoped connector."""
+        result = await checker.can_create_connector(allowed_user, SCOPE_ORG)
+
         assert result.allowed is False
-        assert "superadmin required" in result.reason
+        assert "admin required" in result.reason
 
 
 class TestPermissionCheckerConnectorDelete:
@@ -952,11 +895,11 @@ class TestPermissionCheckerQueryHelpers:
         return user
 
     @pytest.fixture
-    def superadmin_user(self):
-        """Create a superadmin user."""
+    def admin_user(self):
+        """Create an admin user."""
         user = MagicMock()
         user.id = 2
-        user.roles = [ROLE_SUPERADMIN]
+        user.roles = [ROLE_ALLOWED, ROLE_ADMIN]
         return user
 
     # =========================================================================
@@ -1011,15 +954,15 @@ class TestPermissionCheckerQueryHelpers:
     # =========================================================================
 
     @pytest.mark.asyncio
-    async def test_superadmin_gets_all_connectors(
-        self, checker, superadmin_user, mock_db
+    async def test_admin_gets_all_connectors(
+        self, checker, admin_user, mock_db
     ):
-        """Test superadmin can access all connectors."""
+        """Test admin can access all connectors."""
         mock_result = MagicMock()
         mock_result.all.return_value = [(1,), (2,), (3,)]
         mock_db.execute.return_value = mock_result
 
-        result = await checker.get_accessible_connector_ids(superadmin_user)
+        result = await checker.get_accessible_connector_ids(admin_user)
 
         assert result == [1, 2, 3]
 

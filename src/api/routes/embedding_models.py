@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from api.dependencies import DbSession, SuperAdminUser
+from api.dependencies import AdminUser, DbSession
 from echomind_lib.db.models import Document as DocumentORM
 from echomind_lib.db.models import EmbeddingModel as EmbeddingModelORM
 from echomind_lib.models.public import (
@@ -26,7 +26,7 @@ class ActivateEmbeddingModelResponse(BaseModel):
 
 @router.get("", response_model=ListEmbeddingModelsResponse)
 async def list_embedding_models(
-    user: SuperAdminUser,
+    user: AdminUser,
     db: DbSession,
 ) -> ListEmbeddingModelsResponse:
     """
@@ -53,7 +53,7 @@ async def list_embedding_models(
 
 @router.get("/active", response_model=EmbeddingModel)
 async def get_active_embedding_model(
-    user: SuperAdminUser,
+    user: AdminUser,
     db: DbSession,
 ) -> EmbeddingModel:
     """
@@ -88,7 +88,7 @@ async def get_active_embedding_model(
 @router.post("", response_model=EmbeddingModel, status_code=status.HTTP_201_CREATED)
 async def create_embedding_model(
     data: CreateEmbeddingModelRequest,
-    user: SuperAdminUser,
+    user: AdminUser,
     db: DbSession,
 ) -> EmbeddingModel:
     """
@@ -121,7 +121,7 @@ async def create_embedding_model(
 @router.put("/{model_id}/activate", response_model=ActivateEmbeddingModelResponse)
 async def activate_embedding_model(
     model_id: int,
-    user: SuperAdminUser,
+    user: AdminUser,
     db: DbSession,
 ) -> ActivateEmbeddingModelResponse:
     """

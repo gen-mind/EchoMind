@@ -7,7 +7,6 @@ import { useAuth } from './AuthProvider'
 export const GROUPS = {
   ALLOWED: 'echomind-allowed',
   ADMINS: 'echomind-admins',
-  SUPERADMINS: 'echomind-superadmins',
 } as const
 
 /**
@@ -24,10 +23,9 @@ export type ConnectorScope = (typeof SCOPES)[keyof typeof SCOPES]
 /**
  * Permission levels for features.
  * - 'allowed': echomind-allowed and above
- * - 'admin': echomind-admins and above
- * - 'superadmin': echomind-superadmins only
+ * - 'admin': echomind-admins (highest privilege)
  */
-type PermissionLevel = 'allowed' | 'admin' | 'superadmin'
+type PermissionLevel = 'allowed' | 'admin'
 
 /**
  * Feature permission configuration.
@@ -51,14 +49,14 @@ const FEATURE_PERMISSIONS: Record<string, PermissionLevel> = {
   'connectors:manage': 'admin',
   'connectors:create:team': 'admin',
 
-  // Superadmin only (echomind-superadmins)
-  'embedding-models': 'superadmin',
-  llms: 'superadmin',
-  portainer: 'superadmin',
-  infrastructure: 'superadmin',
-  'connectors:create:org': 'superadmin',
-  'teams:delete': 'admin', // Admins can delete teams they lead
-  'users:manage': 'superadmin',
+  // Admin features (infrastructure)
+  'embedding-models': 'admin',
+  llms: 'admin',
+  portainer: 'admin',
+  infrastructure: 'admin',
+  'connectors:create:org': 'admin',
+  'teams:delete': 'admin',
+  'users:manage': 'admin',
 }
 
 /**
@@ -66,9 +64,6 @@ const FEATURE_PERMISSIONS: Record<string, PermissionLevel> = {
  * Higher level includes all permissions from lower levels.
  */
 function getPermissionLevel(groups: string[]): PermissionLevel | null {
-  if (groups.includes(GROUPS.SUPERADMINS)) {
-    return 'superadmin'
-  }
   if (groups.includes(GROUPS.ADMINS)) {
     return 'admin'
   }
@@ -84,7 +79,7 @@ function getPermissionLevel(groups: string[]): PermissionLevel | null {
 function meetsLevel(userLevel: PermissionLevel | null, requiredLevel: PermissionLevel): boolean {
   if (!userLevel) return false
 
-  const levelHierarchy: PermissionLevel[] = ['allowed', 'admin', 'superadmin']
+  const levelHierarchy: PermissionLevel[] = ['allowed', 'admin']
   const userIndex = levelHierarchy.indexOf(userLevel)
   const requiredIndex = levelHierarchy.indexOf(requiredLevel)
 
@@ -194,7 +189,7 @@ export function usePermissions(): UsePermissionsResult {
 
   const isAllowed = level !== null
   const isAdmin = meetsLevel(level, 'admin')
-  const isSuperAdmin = meetsLevel(level, 'superadmin')
+  const isSuperAdmin = isAdmin // Backward compat alias — superadmin collapsed into admin
 
   // Basic permission check
   const can = useCallback(
