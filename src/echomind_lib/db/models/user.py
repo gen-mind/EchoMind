@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from echomind_lib.db.models.agent_memory import AgentMemory
     from echomind_lib.db.models.chat_session import ChatSession
     from echomind_lib.db.models.connector import Connector
+    from echomind_lib.db.models.google_credential import GoogleCredential
 
 
 class User(Base):
@@ -48,3 +49,4 @@ class User(Base):
     connectors: Mapped[list["Connector"]] = relationship(back_populates="user", foreign_keys="Connector.user_id")
     chat_sessions: Mapped[list["ChatSession"]] = relationship(back_populates="user", foreign_keys="ChatSession.user_id")
     agent_memories: Mapped[list["AgentMemory"]] = relationship(back_populates="user", foreign_keys="AgentMemory.user_id")
+    google_credential: Mapped["GoogleCredential | None"] = relationship(back_populates="user", uselist=False)

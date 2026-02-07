@@ -123,19 +123,29 @@ class IngestorSettings(BaseSettings):
         description="PDF extraction method: pdfium | pdfium_hybrid | nemotron_parse",
     )
     chunk_size: int = Field(
-        512,
-        description="Chunk size in TOKENS (not characters)",
+        1024,
+        description="Chunk size in TOKENS (not characters). NVIDIA recommends 512-1024 for enterprise docs.",
         gt=0,
         le=8192,
     )
     chunk_overlap: int = Field(
-        50,
-        description="Chunk overlap in TOKENS",
+        124,
+        description="Chunk overlap in TOKENS. NVIDIA research shows 10-20% overlap optimal (154 tokens = 15% for size 1024).",
         ge=0,
     )
     tokenizer: str = Field(
-        "meta-llama/Llama-3.2-1B",
-        description="HuggingFace tokenizer for chunking",
+        "nvidia/llama-nemotron-embed-1b-v2",
+        description="HuggingFace tokenizer for chunking (must match embedding model for perfect alignment)",
+    )
+    text_depth: str = Field(
+        "page",
+        description="Text extraction granularity: 'document' (full doc) or 'page' (per-page). "
+                    "NVIDIA research shows 'page' achieves highest accuracy (0.648).",
+    )
+    hf_access_token: str | None = Field(
+        None,
+        description="HuggingFace access token (REQUIRED for meta-llama/Llama-3.2-1B tokenizer). "
+                    "Get token at: https://huggingface.co/settings/tokens",
     )
 
     # Optional NIMs
@@ -219,6 +229,71 @@ class IngestorSettings(BaseSettings):
         if v not in valid_methods:
             raise ValueError(f"Invalid extract method: {v}. Must be one of {valid_methods}")
         return v
+
+    @field_validator("text_depth")
+    @classmethod
+    def validate_text_depth(cls, v: str) -> str:
+        """
+        Validate text_depth parameter.
+
+        Args:
+            v: Text depth string.
+
+        Returns:
+            Validated text_depth.
+
+        Raises:
+            ValueError: If text_depth is invalid.
+        """
+        valid_values = {"document", "page"}
+        if v not in valid_values:
+            raise ValueError(
+                f"Invalid text_depth: {v}. Must be one of {valid_values}. "
+                f"NVIDIA recommends 'page' for best retrieval accuracy."
+            )
+        return v
+
+    @model_validator(mode="after")
+    def validate_hf_token_for_gated_models(self) -> "IngestorSettings":
+        """
+        Validate HF token is provided for gated tokenizers.
+
+        Raises:
+            ValueError: If using gated tokenizer without token (CRITICAL).
+        """
+        import logging
+        logger = logging.getLogger("echomind-ingestor.config")
+
+        # CRITICAL: Gated models REQUIRE HF token
+        gated_model_patterns = [
+            "meta-llama/Llama-3.2",
+            "meta-llama/Llama-3",
+            "nvidia/llama-nemotron",
+        ]
+
+        is_gated = any(pattern in self.tokenizer for pattern in gated_model_patterns)
+
+        if is_gated:
+            if not self.hf_access_token:
+                raise ValueError(
+                    f"❌ CRITICAL: HuggingFace access token is MANDATORY for tokenizer '{self.tokenizer}'. "
+                    f"This is a gated model that requires authentication. "
+                    f"Set INGESTOR_HF_ACCESS_TOKEN environment variable. "
+                    f"Get token at: https://huggingface.co/settings/tokens "
+                    f"Accept license at: https://huggingface.co/{self.tokenizer}"
+                )
+            logger.info(f"✅ HuggingFace token configured for tokenizer: {self.tokenizer}")
+
+        # WARNING: Other gated models may need token
+        elif not self.hf_access_token:
+            logger.warning(
+                f"⚠️ WARNING: HuggingFace access token not set. "
+                f"Tokenizer '{self.tokenizer}' may fail if it's a gated model. "
+                f"Set INGESTOR_HF_ACCESS_TOKEN if you encounter authentication errors. "
+                f"Get token at: https://huggingface.co/settings/tokens"
+            )
+
+        return self
 
     @model_validator(mode="after")
     def validate_chunk_overlap_less_than_size(self) -> "IngestorSettings":

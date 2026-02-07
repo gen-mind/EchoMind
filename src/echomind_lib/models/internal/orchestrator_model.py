@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 '''
 @File    :   orchestrator_model.py
-@Time    :   2026-02-06 21:46:26
+@Time    :   2026-02-07 17:47:19
 @Desc    :   Generated Pydantic models from protobuf definitions
 '''
 from ..public.connector_model import ConnectorScope, ConnectorType

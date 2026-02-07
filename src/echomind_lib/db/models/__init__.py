@@ -16,6 +16,7 @@ from echomind_lib.db.models.chat_message import (
 )
 from echomind_lib.db.models.chat_session import ChatSession
 from echomind_lib.db.models.connector import Connector
+from echomind_lib.db.models.google_credential import GoogleCredential
 from echomind_lib.db.models.document import Document
 from echomind_lib.db.models.embedding_model import EmbeddingModel
 from echomind_lib.db.models.llm import LLM
@@ -30,6 +31,7 @@ __all__ = [
     "EmbeddingModel",
     "Assistant",
     "Connector",
+    "GoogleCredential",
     "Document",
     "ChatSession",
     "ChatMessage",

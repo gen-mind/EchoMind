@@ -8,6 +8,19 @@ import pytest
 from ingestor.config import IngestorSettings, get_settings, reset_settings
 
 
+@pytest.fixture(autouse=True)
+def mock_hf_token():
+    """
+    Auto-mock HF token for all tests.
+
+    The default tokenizer (meta-llama/Llama-3.2-1B) requires HF auth.
+    This fixture provides a fake token so tests don't need to set it explicitly.
+    Tests that specifically test token validation can override this.
+    """
+    with patch.dict(os.environ, {"INGESTOR_HF_ACCESS_TOKEN": "hf_test_token_for_unit_tests"}):
+        yield
+
+
 class TestIngestorSettings:
     """Tests for IngestorSettings."""
 
@@ -26,8 +39,11 @@ class TestIngestorSettings:
         assert settings.enabled is True
         assert settings.health_port == 8080
         assert settings.database_echo is False
-        assert settings.chunk_size == 512
-        assert settings.chunk_overlap == 50
+        assert settings.chunk_size == 1024
+        assert settings.chunk_overlap == 124
+        assert settings.text_depth == "page"
+        # HF token comes from test fixture (autouse)
+        assert settings.hf_access_token == "hf_test_token_for_unit_tests"
         assert settings.max_retries == 3
         assert settings.retry_base_delay == 1.0
         assert settings.log_level == "INFO"
@@ -80,9 +96,12 @@ class TestIngestorSettings:
         settings = IngestorSettings()
 
         assert settings.extract_method == "pdfium"
-        assert settings.chunk_size == 512
-        assert settings.chunk_overlap == 50
-        assert settings.tokenizer == "meta-llama/Llama-3.2-1B"
+        assert settings.text_depth == "page"
+        assert settings.chunk_size == 1024
+        assert settings.chunk_overlap == 124
+        assert settings.tokenizer == "nvidia/llama-nemotron-embed-1b-v2"
+        # HF token comes from test fixture
+        assert settings.hf_access_token == "hf_test_token_for_unit_tests"
 
     def test_optional_nims_defaults(self) -> None:
         """Test optional NIMs have correct defaults."""
@@ -216,6 +235,120 @@ class TestIngestorSettings:
         settings = IngestorSettings()
         assert settings.riva_endpoint == "riva:50051"
         assert not settings.riva_endpoint.startswith("http://")
+
+    def test_text_depth_validation_valid(self) -> None:
+        """Test text_depth validation accepts valid values."""
+        for value in ["document", "page"]:
+            with patch.dict(os.environ, {"INGESTOR_TEXT_DEPTH": value}):
+                settings = IngestorSettings()
+                assert settings.text_depth == value
+
+    def test_text_depth_validation_invalid(self) -> None:
+        """Test text_depth validation rejects invalid values."""
+        with patch.dict(os.environ, {"INGESTOR_TEXT_DEPTH": "invalid"}):
+            with pytest.raises(ValueError, match="Invalid text_depth"):
+                IngestorSettings()
+
+    def test_text_depth_default_is_page(self) -> None:
+        """Test text_depth defaults to 'page' (NVIDIA recommended).
+
+        NVIDIA research shows page-level chunking achieves highest
+        accuracy (0.648) with lowest variance across document types.
+        """
+        settings = IngestorSettings()
+        assert settings.text_depth == "page"
+
+    def test_hf_token_required_for_gated_tokenizers(self) -> None:
+        """Test HF token validation for gated tokenizers.
+
+        meta-llama and nvidia/llama-nemotron models are gated and require
+        HuggingFace authentication. The validator must throw a CRITICAL
+        error if token is missing.
+        """
+        # Llama-3.2 requires token (clear autouse fixture token)
+        with patch.dict(
+            os.environ,
+            {"INGESTOR_TOKENIZER": "meta-llama/Llama-3.2-1B"},
+            clear=False,
+        ):
+            # Remove the token set by fixture
+            os.environ.pop("INGESTOR_HF_ACCESS_TOKEN", None)
+            with pytest.raises(ValueError, match="CRITICAL.*HuggingFace access token is MANDATORY"):
+                IngestorSettings()
+
+        # Llama-3 requires token
+        with patch.dict(
+            os.environ,
+            {"INGESTOR_TOKENIZER": "meta-llama/Llama-3-8B"},
+            clear=False,
+        ):
+            os.environ.pop("INGESTOR_HF_ACCESS_TOKEN", None)
+            with pytest.raises(ValueError, match="CRITICAL.*HuggingFace access token is MANDATORY"):
+                IngestorSettings()
+
+        # NVIDIA Nemotron requires token
+        with patch.dict(
+            os.environ,
+            {"INGESTOR_TOKENIZER": "nvidia/llama-nemotron-embed-1b-v2"},
+            clear=False,
+        ):
+            os.environ.pop("INGESTOR_HF_ACCESS_TOKEN", None)
+            with pytest.raises(ValueError, match="CRITICAL.*HuggingFace access token is MANDATORY"):
+                IngestorSettings()
+
+    def test_hf_token_not_required_for_non_gated_tokenizer(self) -> None:
+        """Test HF token is optional for non-gated tokenizers.
+
+        Only meta-llama tokenizers REQUIRE the token. Others may work
+        without it (with a warning logged).
+        """
+        with patch.dict(
+            os.environ,
+            {"INGESTOR_TOKENIZER": "gpt2"},
+            clear=False,
+        ):
+            # Remove token set by fixture
+            os.environ.pop("INGESTOR_HF_ACCESS_TOKEN", None)
+            settings = IngestorSettings()
+            assert settings.tokenizer == "gpt2"
+            assert settings.hf_access_token is None
+
+    def test_hf_token_accepted_when_provided(self) -> None:
+        """Test HF token is accepted when provided for gated tokenizers."""
+        # Test with Llama tokenizer
+        with patch.dict(
+            os.environ,
+            {
+                "INGESTOR_TOKENIZER": "meta-llama/Llama-3.2-1B",
+                "INGESTOR_HF_ACCESS_TOKEN": "hf_test_token_12345",
+            },
+        ):
+            settings = IngestorSettings()
+            assert settings.tokenizer == "meta-llama/Llama-3.2-1B"
+            assert settings.hf_access_token == "hf_test_token_12345"
+
+        # Test with NVIDIA Nemotron tokenizer
+        with patch.dict(
+            os.environ,
+            {
+                "INGESTOR_TOKENIZER": "nvidia/llama-nemotron-embed-1b-v2",
+                "INGESTOR_HF_ACCESS_TOKEN": "hf_test_token_67890",
+            },
+        ):
+            settings = IngestorSettings()
+            assert settings.tokenizer == "nvidia/llama-nemotron-embed-1b-v2"
+            assert settings.hf_access_token == "hf_test_token_67890"
+
+    def test_chunk_overlap_percentage_within_nvidia_range(self) -> None:
+        """Test default chunk overlap is within NVIDIA's 10-20% recommendation.
+
+        NVIDIA research found 15% optimal, with 10-20% acceptable.
+        Default 124/1024 = 12.1% is within this range.
+        """
+        settings = IngestorSettings()
+        overlap_percentage = (settings.chunk_overlap / settings.chunk_size) * 100
+        assert 10.0 <= overlap_percentage <= 20.0, f"Overlap {overlap_percentage:.1f}% outside 10-20% range"
+        assert overlap_percentage == pytest.approx(12.1, abs=0.1)
 
 
 class TestGetSettings:

@@ -302,6 +302,9 @@ class ConnectorApp:
 
         subjects = [
             "connector.sync.google_drive",
+            "connector.sync.gmail",
+            "connector.sync.google_calendar",
+            "connector.sync.google_contacts",
             "connector.sync.onedrive",
         ]
 

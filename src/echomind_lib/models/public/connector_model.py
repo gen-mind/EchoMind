@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 """
 @File    :   connector_model.py
-@Time    :   2026-02-06 21:46:26
+@Time    :   2026-02-07 17:47:19
 @Desc    :   Generated Pydantic models from protobuf definitions
 """
 
@@ -22,6 +22,9 @@ class ConnectorType(_Enum):
     CONNECTOR_TYPE_ONEDRIVE = 3
     CONNECTOR_TYPE_WEB = 4
     CONNECTOR_TYPE_FILE = 5
+    CONNECTOR_TYPE_GMAIL = 6
+    CONNECTOR_TYPE_GOOGLE_CALENDAR = 7
+    CONNECTOR_TYPE_GOOGLE_CONTACTS = 8
 
 
 class ConnectorStatus(_Enum):

@@ -92,8 +92,14 @@ class IngestorApp:
         logger.info(f"   MinIO: {self._settings.minio_endpoint}")
         logger.info(f"   Embedder: {self._settings.embedder_host}:{self._settings.embedder_port}")
         logger.info(f"   Extract method: {self._settings.extract_method}")
+        logger.info(f"   Text depth: {self._settings.text_depth}")
         logger.info(f"   Chunk size: {self._settings.chunk_size} tokens")
+        logger.info(f"   Chunk overlap: {self._settings.chunk_overlap} tokens ({self._settings.chunk_overlap / self._settings.chunk_size * 100:.1f}%)")
         logger.info(f"   Tokenizer: {self._settings.tokenizer}")
+        if self._settings.hf_access_token:
+            logger.info(f"   HF token: {'*' * 8}{self._settings.hf_access_token[-4:]}")
+        else:
+            logger.warning("   ⚠️ HF token: not set (may cause failures for gated models)")
 
         if not self._settings.enabled:
             logger.warning("⚠️ Ingestor is disabled via configuration")

@@ -250,6 +250,97 @@ class SharePointCheckpoint(ConnectorCheckpoint):
         return True
 
 
+class GmailCheckpoint(ConnectorCheckpoint):
+    """
+    Checkpoint for Gmail incremental sync.
+
+    Uses Gmail History API (historyId) for efficient incremental sync.
+    First sync lists all threads, subsequent syncs use history.list.
+    """
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    history_id: str | None = Field(
+        default=None,
+        description="historyId for incremental sync via history.list",
+    )
+    page_token: str | None = Field(
+        default=None,
+        description="Current page token during thread listing",
+    )
+    last_full_sync_at: datetime | None = Field(
+        default=None,
+        description="When the last full sync completed",
+    )
+
+    # Deduplication
+    all_retrieved_thread_ids: set[str] = Field(
+        default_factory=set,
+        description="Thread IDs already retrieved",
+    )
+
+    def mark_thread_retrieved(self, thread_id: str) -> bool:
+        """
+        Mark a thread as retrieved, returning whether it was new.
+
+        Args:
+            thread_id: The thread ID to mark.
+
+        Returns:
+            True if thread was newly added, False if already seen.
+        """
+        if thread_id in self.all_retrieved_thread_ids:
+            return False
+        self.all_retrieved_thread_ids.add(thread_id)
+        self.documents_processed += 1
+        return True
+
+
+class GoogleCalendarCheckpoint(ConnectorCheckpoint):
+    """
+    Checkpoint for Google Calendar incremental sync.
+
+    Uses Calendar API syncToken for efficient incremental sync.
+    Each calendar has its own syncToken stored in sync_tokens dict.
+    On 410 GONE response, performs a full resync for that calendar.
+    """
+
+    sync_tokens: dict[str, str] = Field(
+        default_factory=dict,
+        description="Per-calendar syncTokens (calendar_id -> syncToken)",
+    )
+    calendar_ids: list[str] | None = Field(
+        default=None,
+        description="List of calendar IDs to sync",
+    )
+    current_calendar_idx: int = Field(
+        default=0,
+        description="Index into calendar_ids for resumption within a sync cycle",
+    )
+    page_token: str | None = Field(
+        default=None,
+        description="Current page token during event listing",
+    )
+
+
+class GoogleContactsCheckpoint(ConnectorCheckpoint):
+    """
+    Checkpoint for Google Contacts incremental sync.
+
+    Uses People API syncToken for efficient incremental sync.
+    syncToken expires after 7 days; on 410 GONE, performs full resync.
+    """
+
+    sync_token: str | None = Field(
+        default=None,
+        description="People API syncToken for incremental sync",
+    )
+    page_token: str | None = Field(
+        default=None,
+        description="Current page token during contact listing",
+    )
+
+
 # Type alias for checkpoint serialization
 CheckpointData = dict[str, Any]
 
@@ -285,10 +376,16 @@ def deserialize_checkpoint(data: CheckpointData) -> ConnectorCheckpoint:
     """
     checkpoint_type = data.pop("_type", None)
 
-    if checkpoint_type == "GoogleDriveCheckpoint":
-        return GoogleDriveCheckpoint.model_validate(data)
-    elif checkpoint_type == "SharePointCheckpoint":
-        return SharePointCheckpoint.model_validate(data)
+    checkpoint_classes: dict[str, type[ConnectorCheckpoint]] = {
+        "GoogleDriveCheckpoint": GoogleDriveCheckpoint,
+        "SharePointCheckpoint": SharePointCheckpoint,
+        "GmailCheckpoint": GmailCheckpoint,
+        "GoogleCalendarCheckpoint": GoogleCalendarCheckpoint,
+        "GoogleContactsCheckpoint": GoogleContactsCheckpoint,
+    }
+
+    if checkpoint_type in checkpoint_classes:
+        return checkpoint_classes[checkpoint_type].model_validate(data)
     elif checkpoint_type == "ConnectorCheckpoint" or checkpoint_type is None:
         return ConnectorCheckpoint.model_validate(data)
     else:

@@ -235,6 +235,7 @@ class DocumentProcessor:
                         extract_primitives_from_pdf_pdfium,
                         df_extraction_ledger=df,
                         extract_text=True,
+                        text_depth=self._settings.text_depth,
                         extract_tables=yolox_on,
                         extract_charts=yolox_on,
                         extract_images=yolox_on,
@@ -255,6 +256,7 @@ class DocumentProcessor:
                         extract_primitives_from_docx,
                         df_ledger=df,
                         extract_text=True,
+                        text_depth=self._settings.text_depth,
                         extract_tables=yolox_on,
                         extract_charts=yolox_on,
                         extract_images=yolox_on,
@@ -274,6 +276,7 @@ class DocumentProcessor:
                         extract_primitives_from_pptx,
                         df_ledger=df,
                         extract_text=True,
+                        text_depth=self._settings.text_depth,
                         extract_tables=yolox_on,
                         extract_charts=yolox_on,
                         extract_images=yolox_on,
@@ -299,6 +302,7 @@ class DocumentProcessor:
                         extract_primitives_from_image,
                         df_ledger=df,
                         extract_text=True,
+                        text_depth=self._settings.text_depth,
                         extract_tables=yolox_on,
                         extract_charts=yolox_on,
                         extract_images=yolox_on,
@@ -484,6 +488,11 @@ class DocumentProcessor:
 
             # Tokenization is CPU-bound; run in executor to avoid
             # blocking the event loop for large documents.
+            # Build params dict with HF token if available.
+            params = {}
+            if self._settings.hf_access_token:
+                params["hf_access_token"] = self._settings.hf_access_token
+
             loop = asyncio.get_running_loop()
             chunked_df = await loop.run_in_executor(
                 None,
@@ -494,6 +503,7 @@ class DocumentProcessor:
                     chunk_size=self._settings.chunk_size,
                     chunk_overlap=self._settings.chunk_overlap,
                     split_source_types=["text", "PDF", "DOCX", "PPTX", "HTML"],
+                    params=params,
                 ),
             )
 
