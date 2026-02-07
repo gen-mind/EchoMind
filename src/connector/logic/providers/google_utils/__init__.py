@@ -9,7 +9,7 @@ from connector.logic.providers.google_utils.markdown import (
 )
 from connector.logic.providers.google_utils.pagination import google_paginate
 from connector.logic.providers.google_utils.rate_limiter import handle_rate_limit
-from connector.logic.providers.google_utils.scopes import (
+from echomind_lib.google import (
     GOOGLE_SCOPES,
     all_scopes,
     scopes_for_service,

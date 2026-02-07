@@ -27,10 +27,12 @@ from connector.logic.providers.google_utils.rate_limiter import (
     _parse_retry_timestamp,
     handle_rate_limit,
 )
-from connector.logic.providers.google_utils.scopes import (
+from echomind_lib.google.scopes import (
     GOOGLE_SCOPES,
     all_scopes,
     scopes_for_service,
+    service_has_scopes,
+    services_authorized,
 )
 
 
@@ -236,6 +238,83 @@ class TestScopes:
         assert len(scopes) >= 5
         assert "https://www.googleapis.com/auth/gmail.readonly" in scopes
         assert "https://www.googleapis.com/auth/drive.readonly" in scopes
+
+
+class TestServiceHasScopes:
+    """Tests for service_has_scopes helper."""
+
+    def test_drive_has_all_scopes(self) -> None:
+        """Test drive is authorized when all drive scopes granted."""
+        granted = [
+            "https://www.googleapis.com/auth/drive.readonly",
+            "https://www.googleapis.com/auth/drive.metadata.readonly",
+        ]
+        assert service_has_scopes("drive", granted) is True
+
+    def test_drive_missing_one_scope(self) -> None:
+        """Test drive is not authorized when one scope is missing."""
+        granted = ["https://www.googleapis.com/auth/drive.readonly"]
+        assert service_has_scopes("drive", granted) is False
+
+    def test_gmail_authorized(self) -> None:
+        """Test gmail is authorized with correct scope."""
+        granted = ["https://www.googleapis.com/auth/gmail.readonly"]
+        assert service_has_scopes("gmail", granted) is True
+
+    def test_empty_granted_scopes(self) -> None:
+        """Test no scopes granted returns False."""
+        assert service_has_scopes("drive", []) is False
+
+    def test_extra_scopes_dont_interfere(self) -> None:
+        """Test that extra scopes don't affect authorization check."""
+        granted = [
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/drive.readonly",
+            "https://www.googleapis.com/auth/some.other.scope",
+        ]
+        assert service_has_scopes("gmail", granted) is True
+
+    def test_unknown_service_raises(self) -> None:
+        """Test unknown service raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown Google service"):
+            service_has_scopes("unknown", [])
+
+
+class TestServicesAuthorized:
+    """Tests for services_authorized helper."""
+
+    def test_no_scopes_all_false(self) -> None:
+        """Test empty scopes returns all services as False."""
+        result = services_authorized([])
+        assert result == {
+            "drive": False,
+            "gmail": False,
+            "calendar": False,
+            "contacts": False,
+        }
+
+    def test_all_scopes_all_true(self) -> None:
+        """Test all scopes returns all services as True."""
+        granted = all_scopes()
+        result = services_authorized(granted)
+        assert all(result.values())
+
+    def test_partial_authorization(self) -> None:
+        """Test with only some services authorized."""
+        granted = [
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/calendar.readonly",
+        ]
+        result = services_authorized(granted)
+        assert result["gmail"] is True
+        assert result["calendar"] is True
+        assert result["drive"] is False
+        assert result["contacts"] is False
+
+    def test_all_four_services_present(self) -> None:
+        """Test result dict has all four service keys."""
+        result = services_authorized([])
+        assert set(result.keys()) == {"drive", "gmail", "calendar", "contacts"}
 
 
 # =========================================================================
