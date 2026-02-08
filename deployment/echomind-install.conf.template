@@ -1,0 +1,121 @@
+# ===============================================
+# EchoMind Server Installation Configuration
+# ===============================================
+#
+# INSTRUCTIONS:
+# 1. Copy this file: cp echomind-install.conf.template echomind-install.conf
+# 2. Fill in all REQUIRED fields below
+# 3. Run: ./install-echomind-server.sh
+#
+# ===============================================
+
+# ===============================================
+# DOMAIN CONFIGURATION (REQUIRED)
+# ===============================================
+# Your base domain (e.g., echomind.pinewood.com, demo.echomind.ch)
+# All services will be accessed via subdomains (api.DOMAIN, auth.DOMAIN, etc.)
+# IMPORTANT: You MUST configure DNS wildcard record (*.DOMAIN) pointing to this server's IP
+DOMAIN=""
+
+# Server IP address (public IP of this Hetzner server)
+# This will be used for SSH tunnels and firewall configuration
+SERVER_IP=""
+
+# Your email for Let's Encrypt SSL certificates
+ACME_EMAIL=""
+
+# ===============================================
+# POSTGRESQL CREDENTIALS (REQUIRED)
+# ===============================================
+POSTGRES_USER="echomind"
+POSTGRES_PASSWORD=""  # REQUIRED: Strong password for PostgreSQL
+
+# ===============================================
+# AUTHENTIK CONFIGURATION (REQUIRED)
+# ===============================================
+# Generate with: openssl rand -hex 32
+AUTHENTIK_SECRET_KEY=""  # REQUIRED: 64-character hex string
+
+# Initial admin credentials for Authentik login
+AUTHENTIK_BOOTSTRAP_PASSWORD=""  # REQUIRED: Admin password
+AUTHENTIK_BOOTSTRAP_EMAIL="${ACME_EMAIL}"  # Will use ACME_EMAIL if not specified
+
+# ===============================================
+# MINIO CREDENTIALS (REQUIRED)
+# ===============================================
+MINIO_ROOT_USER="echomindadmin"
+MINIO_ROOT_PASSWORD=""  # REQUIRED: Strong password for MinIO
+
+# ===============================================
+# GRAFANA CREDENTIALS (OPTIONAL - if observability enabled)
+# ===============================================
+GRAFANA_ADMIN_PASSWORD=""  # REQUIRED if ENABLE_OBSERVABILITY=true
+
+# ===============================================
+# HUGGINGFACE TOKEN (OPTIONAL)
+# ===============================================
+# Used to pre-download embedding models during Docker build
+# Get token at: https://huggingface.co/settings/tokens (Read role)
+# Leave empty to download without auth (may hit rate limits)
+HF_TOKEN=""
+
+# ===============================================
+# FEATURE FLAGS
+# ===============================================
+# Enable Prometheus/Grafana/Loki observability stack
+ENABLE_OBSERVABILITY="false"
+
+# Enable Langfuse LLM tracing and evaluation
+ENABLE_LANGFUSE="true"
+
+# ===============================================
+# LANGFUSE CONFIGURATION (if ENABLE_LANGFUSE=true)
+# ===============================================
+# Security keys - generate each with: openssl rand -hex 32
+LANGFUSE_NEXTAUTH_SECRET=""  # Auto-generated if empty
+LANGFUSE_SALT=""  # Auto-generated if empty
+LANGFUSE_ENCRYPTION_KEY=""  # Auto-generated if empty
+LANGFUSE_CLICKHOUSE_PASSWORD=""  # Auto-generated if empty
+
+# SDK keys - auto-generated if empty
+LANGFUSE_PUBLIC_KEY=""  # Format: pk-echomind-XXXXXXXX
+LANGFUSE_SECRET_KEY=""  # Format: sk-echomind-XXXXXXXX
+
+# Admin credentials
+LANGFUSE_INIT_EMAIL="${ACME_EMAIL}"  # Will use ACME_EMAIL if not specified
+LANGFUSE_INIT_PASSWORD=""  # Auto-generated if empty
+
+# ===============================================
+# REPOSITORY CONFIGURATION
+# ===============================================
+# Git repositories to clone (default: official repos)
+ECHOMIND_REPO="https://github.com/gen-mind/EchoMind.git"
+ECHOMIND_WEBUI_REPO="https://github.com/gen-mind/echomind-webui.git"
+
+# Branch to checkout (default: main)
+ECHOMIND_BRANCH="main"
+ECHOMIND_WEBUI_BRANCH="main"
+
+# ===============================================
+# INSTALLATION OPTIONS
+# ===============================================
+# Skip installimage and reboot (set to "true" if Ubuntu 24.04 already installed)
+SKIP_INSTALLIMAGE="false"
+
+# Skip Docker installation (set to "true" if Docker already installed)
+SKIP_DOCKER_INSTALL="false"
+
+# Clone destination directory
+INSTALL_DIR="/root"
+
+# ===============================================
+# ADVANCED OPTIONS
+# ===============================================
+# Timezone
+TZ="Europe/Zurich"
+
+# Docker version (pinned for PyCharm compatibility)
+DOCKER_VERSION="5:28.5.2-1~ubuntu.24.04~noble"
+
+# EchoMind version
+ECHOMIND_VERSION="0.1.0-beta.5"

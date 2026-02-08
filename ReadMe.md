@@ -209,6 +209,42 @@ EchoMind is designed for the most restricted environments:
 
 ---
 
+### Deploy It Yourself — or Let Us Deploy It for You
+
+**Option 1: Self-Hosted** — Deploy EchoMind anywhere you want on any GPU-equipped server. You own the hardware, you control the data. Follow the [quickstart guide](deployment/docker-cluster/QUICKSTART.md) and you're up in under an hour.
+
+**Option 2: Fully Managed** — We deploy and manage EchoMind on a **dedicated server exclusively for you** in our datacenter in **Germany (EU)**, fully **GDPR-compliant**. No shared infrastructure, no multi-tenancy — your own machine, your own data.
+
+At the **lowest price on the world wide web**:
+
+#### 1–50 Users
+
+| Spec | Details |
+|------|---------|
+| **CPU** | Intel Core i5-13500 (6P + 8E cores, Hyper-Threading) |
+| **GPU** | NVIDIA RTX 4000 SFF Ada Generation — **20 GB GDDR6 ECC** |
+| **RAM** | 64 GB DDR4 |
+| **Storage** | 2 x 1.92 TB NVMe SSD (RAID 1) |
+| **Network** | 1 Gbit/s, unlimited traffic |
+| **Price** | **Starting at ~$200/month** |
+
+#### 50–200 Users
+
+| Spec | Details |
+|------|---------|
+| **CPU** | Intel Xeon Gold 5412U (24 cores, Hyper-Threading) |
+| **GPU** | NVIDIA RTX PRO 6000 Blackwell Max-Q — **96 GB GDDR7 ECC**, 5th-gen Tensor Cores |
+| **RAM** | 256 GB DDR5 ECC (expandable to 768 GB) |
+| **Storage** | 2 x 960 GB NVMe SSD Datacenter Edition (RAID 1) |
+| **Network** | 1 Gbit/s guaranteed, unlimited traffic |
+| **Price** | **Starting at ~$990/month** |
+
+> Both plans include: dedicated server setup, EchoMind deployment, SSL certificates, Authentik SSO configuration, and ongoing maintenance. No minimum contract — cancel anytime.
+
+📅 [**Book a free call**](https://calendar.app.google/QuNua7HxdsSasCGu9) to discuss your deployment with [gsantopaolo](https://github.com/gsantopaolo)
+
+---
+
 ## Tech Stack
 
 | Component | Technology | Notes |
@@ -267,7 +303,8 @@ We're building EchoMind in Python and welcome contributions in:
 - [Supported Connectors](docs/personal-assistant/echomind-connectors.md) - 63 data source integrations with market analysis
 - [Business Use Cases](docs/personal-assistant/echomind-use-cases-business-problems.md) - Productized solutions for real business problems
 - [Connector Use Cases](docs/personal-assistant/echomind-connector-use-cases.md) - 79 workflows showing what each connector enables
-- API Documentation - *Coming soon*
+- [API Specification](docs/api-spec.md) - REST/WebSocket endpoint reference
+- [Langfuse Setup](docs/langfuse-setup.md) - LLM observability and RAGAS evaluation
 
 ---
 
@@ -288,6 +325,91 @@ We're building EchoMind in Python and welcome contributions in:
 | Cost | Free + API costs | Free (MIT) + API costs |
 
 **Bottom line:** If you want an AI assistant for personal use, OpenClaw is excellent. If you want to deploy AI assistants across your organization without creating security vulnerabilities, EchoMind is built for that.
+
+---
+
+## Observability & Visualization
+
+EchoMind includes a full observability stack covering infrastructure metrics, log aggregation, Gen AI evaluation, and vector visualization. All observability features are **optional** and gated by environment flags.
+
+---
+
+### Vector Visualization with TensorBoard
+
+The **Projector Service** generates interactive 3D/2D visualizations of your vector collections using [TensorBoard Projector](https://projector.tensorflow.org/).
+
+| Feature | Description |
+|---------|-------------|
+| **Collection Scoping** | Visualize vectors scoped to user (`user_{id}`), team (`team_{id}`), or organization (`org_{id}`) |
+| **Search Filtering** | Optionally filter vectors by full-text search on title and content |
+| **On-Demand Generation** | Trigger via API (`POST /api/v1/projector/generate`) or WebUI |
+| **Batch Processing** | Fetches up to 20,000 vectors from Qdrant in batches of 500 |
+
+**How it works:**
+1. API receives a generation request with collection scope and optional search query
+2. Request is published to NATS (`projector.generate`)
+3. Projector worker fetches vectors from Qdrant, generates TensorFlow checkpoints + metadata
+4. TensorBoard serves the visualization at `https://tensorboard.<DOMAIN>`
+
+**Configuration:** `TENSORBOARD_DOMAIN`, `PROJECTOR_QDRANT_URL`, `PROJECTOR_LOG_DIR`
+
+> See [Architecture](docs/architecture.md) for service interaction diagrams.
+
+---
+
+### Gen AI Observability with RAGAS and Langfuse
+
+[Langfuse v3](https://langfuse.com/) provides **LLM observability** and [RAGAS](https://docs.ragas.io/) provides **RAG quality evaluation** — giving you visibility into how well your AI is performing.
+
+| Component | What It Does |
+|-----------|-------------|
+| **Langfuse Traces** | Records every chat interaction: query, response, context chunks, latency |
+| **RAGAS Faithfulness** | Is the response grounded in the retrieved context? (0-1 score) |
+| **RAGAS Response Relevancy** | Is the response relevant to the user's query? (0-1 score) |
+| **RAGAS Context Precision** | Are the retrieved chunks relevant to the query? (0-1 score) |
+
+**Two evaluation modes:**
+- **Online (sampled)**: Configurable fraction of chat requests auto-evaluated (`RAGAS_SAMPLE_RATE`, default 10%)
+- **Batch**: Admin-triggered evaluation of recent sessions via WebUI or API (`POST /api/v1/evaluate/batch`)
+
+**Enabling:** Set `ENABLE_LANGFUSE=true` in `.env.host` and configure secrets. See [Langfuse Setup](docs/langfuse-setup.md).
+
+Langfuse shares PostgreSQL, MinIO, and Redis with EchoMind. ClickHouse is dedicated to Langfuse for OLAP trace storage.
+
+---
+
+### Standard Observability with Grafana, Loki, Prometheus
+
+The infrastructure observability stack provides metrics, logs, and dashboards — all self-hosted with no external dependencies.
+
+| Component | Purpose |
+|-----------|---------|
+| [**Prometheus**](https://prometheus.io/) | Metrics collection — scrapes `/metrics` from all services every 10s |
+| [**Loki**](https://grafana.com/oss/loki/) | Log aggregation — collects container stdout via Alloy |
+| [**Grafana**](https://grafana.com/oss/grafana/) | Dashboards — 12 pre-shipped dashboards, Authentik SSO |
+| [**Alloy**](https://grafana.com/docs/alloy/) | Log collector — auto-discovers Docker containers |
+| **Exporters** | cAdvisor (containers), node-exporter (host), postgres-exporter, nats-exporter |
+
+**12 Pre-Shipped Grafana Dashboards:**
+
+| Dashboard | What It Shows |
+|-----------|---------------|
+| EchoMind Overview | Service health, error rates, NATS queue depth |
+| Loki Logs Explorer | Service log browser with level filtering and full-text search |
+| RAGAS Evaluation | RAG quality score trends, distributions, evaluation rates |
+| Docker Containers | Per-container CPU, memory, network I/O, restarts |
+| Node Exporter | Host CPU, memory, disk, network interfaces |
+| NATS Server | Connections, messages in/out, throughput |
+| NATS JetStream | Stream/consumer message counts, pending, lag |
+| Traefik | HTTP request rate, latency percentiles, error rates |
+| PostgreSQL | Connections, transactions, locks, cache hit ratio |
+| MinIO | Object storage capacity, S3 traffic, request latency |
+| Qdrant | Vector DB collection stats, query performance |
+| Loki (self-monitoring) | Ingestion rate, error rates |
+
+**Enabling:** Set `ENABLE_OBSERVABILITY=true` in `.env.host`. Access Grafana at `https://grafana.<DOMAIN>`.
+
+> OpenTelemetry compatibility: The stack uses Prometheus exposition format and Loki's log pipeline, both of which are OpenTelemetry-compatible. Services can be instrumented with OTel SDKs to push traces and metrics alongside the pull-based Prometheus scraping.
 
 ---
 
