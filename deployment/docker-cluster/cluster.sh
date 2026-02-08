@@ -73,8 +73,8 @@ COMPOSE_ENV_FLAG=""
 if [ "${1:-}" = "--host" ] || [ "${1:-}" = "-H" ]; then
     MODE="host"
     COMPOSE_FILE="docker-compose-host.yml"
-    ENV_SOURCE=".env.host"
-    COMPOSE_ENV_FLAG="--env-file .env.host"
+    ENV_SOURCE=".env"
+    COMPOSE_ENV_FLAG="--env-file .env"
     DOMAIN="demo.echomind.ch"
     shift  # Remove the flag from arguments
 elif [ "${1:-}" = "--local" ] || [ "${1:-}" = "-L" ]; then
@@ -107,19 +107,34 @@ fi
 # Source environment file and export all variables
 # This ensures docker-compose can interpolate variables without warnings
 cd "$SCRIPT_DIR"
+
+# Check if .env file exists (REQUIRED)
+if [ ! -f ".env" ]; then
+    echo -e "${RED}❌ Error: .env file not found!${NC}"
+    echo ""
+    echo "Please create .env file from template:"
+    if [ "$MODE" = "host" ]; then
+        echo "  cp .env.host .env"
+        echo "  nano .env  # Edit with your actual secrets"
+    else
+        echo "  cp .env.example .env"
+        echo "  nano .env  # Edit with your local settings"
+    fi
+    echo ""
+    exit 1
+fi
+
 if [ -f "$ENV_SOURCE" ]; then
     set -a  # Automatically export all variables
     source "$ENV_SOURCE"
     set +a  # Stop auto-exporting
 fi
 
-# Read ENABLE_OBSERVABILITY from .env (or .env.host for host mode)
+# Read ENABLE_OBSERVABILITY from .env
 OBSERVABILITY_PROFILE=""
 OBSERVABILITY_FILES=""
 _obs_enabled=false
 if [ -f "$SCRIPT_DIR/.env" ] && grep -q "^[[:space:]]*ENABLE_OBSERVABILITY[[:space:]]*=[[:space:]]*true" "$SCRIPT_DIR/.env" 2>/dev/null; then
-    _obs_enabled=true
-elif [ "$MODE" = "host" ] && [ -f "$SCRIPT_DIR/.env.host" ] && grep -q "^[[:space:]]*ENABLE_OBSERVABILITY[[:space:]]*=[[:space:]]*true" "$SCRIPT_DIR/.env.host" 2>/dev/null; then
     _obs_enabled=true
 fi
 if [ "$_obs_enabled" = true ]; then
@@ -130,13 +145,11 @@ if [ "$_obs_enabled" = true ]; then
     fi
 fi
 
-# Read ENABLE_LANGFUSE from .env (or .env.host for host mode)
+# Read ENABLE_LANGFUSE from .env
 LANGFUSE_PROFILE=""
 LANGFUSE_FILES=""
 _langfuse_enabled=false
-if [ -f "$SCRIPT_DIR/.env" ] && grep -q "^[[:space:]]*ENABLE_LANGFUSE[[:space:]]*=[[:space:]]*true" "$SCRIPT_DIR/.env" 2>/dev/null; then
-    _langfuse_enabled=true
-elif [ "$MODE" = "host" ] && [ -f "$SCRIPT_DIR/.env.host" ] && grep -q "^[[:space:]]*ENABLE_LANGFUSE[[:space:]]*=[[:space:]]*true" "$SCRIPT_DIR/.env.host" 2>/dev/null; then
+if [ -f "$SCRIPT_DIR/.env" ] && grep -q "^[[:space:]]*ENABLE_LANGFUSE[[:space:]]*=[[:space]]*true" "$SCRIPT_DIR/.env" 2>/dev/null; then
     _langfuse_enabled=true
 fi
 if [ "$_langfuse_enabled" = true ]; then

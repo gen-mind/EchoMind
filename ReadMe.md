@@ -219,27 +219,50 @@ At the **lowest price on the world wide web**:
 
 #### 1–50 Users
 
-| Spec | Details                                                                   |
-|------|---------------------------------------------------------------------------|
-| **CPU** | Intel Core i5-13500 (6P + 8E cores, Hyper-Threading)                      |
-| **GPU** | NVIDIA RTX 4000 SFF Ada Generation — **20 GB GDDR6 ECC**                  |
-| **RAM** | 64 GB DDR4                                                                |
-| **Storage** | 2 x 1.92 TB NVMe SSD (RAID 1)                                             |
-| **Network** | 1 Gbit/s, unlimited traffic                                               |
-| **Price** | **Starting at ~$450/month** - one time setup fee - Notthing else to pay - |
+| Spec | Details                                                                  |
+|------|--------------------------------------------------------------------------|
+| **CPU** | Intel Core i5-13500 (6P + 8E cores, Hyper-Threading)                     |
+| **GPU** | NVIDIA RTX 4000 SFF Ada Generation — **20 GB GDDR6 ECC**                 |
+| **RAM** | 64 GB DDR4                                                               |
+| **Storage** | 2 x 1.92 TB NVMe SSD (RAID 1)                                            |
+| **Network** | 1 Gbit/s, unlimited traffic                                              |
+| **Price** | **Starting at ~$450/month** - Nothing else to pay |
+
+**What you get with 20 GB VRAM:**
+
+| Capability | Details |
+|------------|---------|
+| **LLM Models** | Llama 3.1 8B, Mistral 7B, Qwen 2.5 14B (4-bit quantized) |
+| **Generation Speed** | 45–60 tokens/sec per user |
+| **Concurrent Chats** | 5–10 simultaneous conversations (< 10s response time) |
+| **Active Users** | Up to ~25 with staggered request patterns |
+| **Response Latency** | ~4–5s single user, ~8–12s under load |
+| **Embedding Model** | Runs alongside LLM on the same GPU (e.g., BGE-M3, Nemotron 1B) |
 
 #### 50–200 Users
 
-| Spec | Details                                                                         |
-|------|---------------------------------------------------------------------------------|
-| **CPU** | Intel Xeon Gold 5412U (24 cores, Hyper-Threading)                               |
+| Spec | Details                                                                        |
+|------|--------------------------------------------------------------------------------|
+| **CPU** | Intel Xeon Gold 5412U (24 cores, Hyper-Threading)                              |
 | **GPU** | NVIDIA RTX PRO 6000 Blackwell Max-Q — **96 GB GDDR7 ECC**, 5th-gen Tensor Cores |
-| **RAM** | 256 GB DDR5 ECC (expandable to 768 GB)                                          |
-| **Storage** | 2 x 960 GB NVMe SSD Datacenter Edition (RAID 1)                                 |
-| **Network** | 1 Gbit/s guaranteed, unlimited traffic                                          |
-| **Price** | **Starting at ~$1390/month** - one time setup fee -Notthing else to pay         |
+| **RAM** | 256 GB DDR5 ECC (expandable to 768 GB)                                         |
+| **Storage** | 2 x 960 GB NVMe SSD Datacenter Edition (RAID 1)                                |
+| **Network** | 1 Gbit/s guaranteed, unlimited traffic                                         |
+| **Price** | **Starting at ~$1390/month** - Nothing else to pay |
 
-> Both plans include: dedicated server setup, EchoMind deployment, SSL certificates, Authentik SSO configuration, and ongoing maintenance. No minimum contract — cancel anytime.
+**What you get with 96 GB VRAM:**
+
+| Capability | Details |
+|------------|---------|
+| **LLM Models** | Llama 3.1 70B (FP16), Qwen 2.5 72B, Mixtral 8x22B, DeepSeek-V2 |
+| **Generation Speed** | 30–50 tokens/sec per user (70B model) |
+| **Concurrent Chats** | 20–40 simultaneous conversations (< 10s response time) |
+| **Active Users** | Up to ~100+ with staggered request patterns |
+| **Response Latency** | ~3–5s single user, ~6–10s under load |
+| **Embedding Model** | Runs alongside LLM with VRAM to spare |
+| **Blackwell Advantage** | FP4 Tensor Cores, 2x inference throughput vs Ada generation |
+
+> Both plans include: dedicated server setup (with one time fee), EchoMind deployment, SSL certificates, Authentik SSO configuration, and ongoing maintenance. No minimum contract — cancel anytime.
 
 📅 [**Book a free call**](https://calendar.app.google/QuNua7HxdsSasCGu9) to discuss your deployment with [gsantopaolo](https://github.com/gsantopaolo)
 
