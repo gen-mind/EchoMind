@@ -47,12 +47,6 @@ services:
       - ${CONFIG_PATH}/observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
       - loki_data:/loki
     command: -config.file=/etc/loki/loki-config.yml
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
-      interval: 15s
-      timeout: 5s
-      start_period: 15s
-      retries: 3
     restart: unless-stopped
     networks:
       - backend
@@ -80,7 +74,7 @@ services:
       retries: 3
     depends_on:
       loki:
-        condition: service_healthy
+        condition: service_started
     restart: unless-stopped
     networks:
       - backend
@@ -216,7 +210,7 @@ services:
       prometheus:
         condition: service_healthy
       loki:
-        condition: service_healthy
+        condition: service_started
     restart: unless-stopped
     networks:
       - frontend
