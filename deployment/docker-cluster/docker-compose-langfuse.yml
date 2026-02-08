@@ -134,7 +134,11 @@ services:
       - frontend
       - backend
     labels:
-      - "traefik.enable=false"  # Traefik config in docker-compose-langfuse-host.yml for production
+      - "traefik.enable=true"
+      # Local mode: HTTP only
+      - "traefik.http.routers.langfuse.rule=Host(`${LANGFUSE_DOMAIN}`)"
+      - "traefik.http.routers.langfuse.entrypoints=web"
+      - "traefik.http.services.langfuse.loadbalancer.server.port=3000"
 
   # ============================================
   # Langfuse Worker - Async event processing
