@@ -286,43 +286,61 @@ start_cluster() {
     if [ "$MODE" = "host" ]; then
         # Host mode URLs (production)
         log_info "Application:"
-        echo -e "  ${GREEN}🌐 Web App:${NC}       ${PROTOCOL}://${DOMAIN}"
+        echo -e "  ${GREEN}🌐 Web App:${NC}         ${PROTOCOL}://${DOMAIN}"
+        echo -e "  ${GREEN}🚀 API:${NC}             ${PROTOCOL}://${API_DOMAIN}"
         echo ""
 
-        log_info "Core Services:"
-        echo -e "  ${GREEN}🔐 Authentik:${NC}     ${PROTOCOL}://${AUTHENTIK_DOMAIN}"
-        echo -e "  ${GREEN}🚀 API:${NC}           ${PROTOCOL}://${API_DOMAIN}"
-        echo -e "  ${GREEN}🔍 Qdrant:${NC}        ${PROTOCOL}://${QDRANT_DOMAIN}"
-        echo -e "  ${GREEN}📦 MinIO:${NC}         ${PROTOCOL}://${MINIO_DOMAIN}"
-        echo -e "  ${GREEN}💾 S3 API:${NC}        ${PROTOCOL}://${S3_DOMAIN}"
-        echo -e "  ${GREEN}📡 NATS:${NC}          ${PROTOCOL}://${NATS_DOMAIN}"
-        echo -e "  ${GREEN}🗄️  PostgreSQL:${NC}   ${PROTOCOL}://${POSTGRES_DOMAIN}"
-        echo -e "  ${GREEN}🐳 Portainer:${NC}     ${PROTOCOL}://${PORTAINER_DOMAIN}"
-        echo -e "  ${GREEN}🎨 TensorBoard:${NC}   ${PROTOCOL}://${TENSORBOARD_DOMAIN}"
+        log_info "Authentication & Access Control:"
+        echo -e "  ${GREEN}🔐 Authentik:${NC}       ${PROTOCOL}://${AUTHENTIK_DOMAIN}"
+        echo ""
+
+        log_info "Data Services:"
+        echo -e "  ${GREEN}🔍 Qdrant:${NC}          ${PROTOCOL}://${QDRANT_DOMAIN} ${CYAN}(Vector DB UI)${NC}"
+        echo -e "  ${GREEN}🗄️  Adminer:${NC}         ${PROTOCOL}://${POSTGRES_DOMAIN} ${CYAN}(PostgreSQL Admin)${NC}"
+        echo -e "  ${GREEN}📦 MinIO Console:${NC}   ${PROTOCOL}://${MINIO_DOMAIN} ${CYAN}(S3 Storage UI)${NC}"
+        echo -e "  ${GREEN}💾 S3 API:${NC}           ${PROTOCOL}://${S3_DOMAIN} ${CYAN}(S3-compatible endpoint)${NC}"
+        echo ""
+
+        log_info "Infrastructure:"
+        echo -e "  ${GREEN}📡 NATS:${NC}            ${PROTOCOL}://${NATS_DOMAIN} ${CYAN}(Message Queue UI)${NC}"
+        echo -e "  ${GREEN}🐳 Portainer:${NC}       ${PROTOCOL}://${PORTAINER_DOMAIN} ${CYAN}(Container Management)${NC}"
+        echo ""
+
+        log_info "ML & Analytics:"
+        echo -e "  ${GREEN}🎨 TensorBoard:${NC}     ${PROTOCOL}://${TENSORBOARD_DOMAIN} ${CYAN}(Training Metrics)${NC}"
         echo ""
 
         if [ -n "$OBSERVABILITY_PROFILE" ]; then
-            log_info "Observability Stack:"
-            echo -e "  ${GREEN}📊 Grafana:${NC}       ${PROTOCOL}://${GRAFANA_DOMAIN}"
-            echo -e "  ${GREEN}📈 Prometheus:${NC}    ${PROTOCOL}://${PROMETHEUS_DOMAIN}"
+            log_info "Observability:"
+            echo -e "  ${GREEN}📊 Grafana:${NC}         ${PROTOCOL}://${GRAFANA_DOMAIN} ${CYAN}(Dashboards)${NC}"
+            echo -e "  ${GREEN}📈 Prometheus:${NC}      ${PROTOCOL}://${PROMETHEUS_DOMAIN} ${CYAN}(Metrics DB)${NC}"
             echo ""
         fi
 
+        # Check if Langfuse is enabled (either via profile or if containers are running)
+        _show_langfuse=false
         if [ -n "$LANGFUSE_PROFILE" ]; then
-            log_info "LLM Tracing:"
-            echo -e "  ${GREEN}🔬 Langfuse:${NC}      ${PROTOCOL}://${LANGFUSE_DOMAIN}"
+            _show_langfuse=true
+        elif docker ps --filter "name=observability-langfuse" --format "{{.Names}}" 2>/dev/null | grep -q "observability-langfuse"; then
+            _show_langfuse=true
+        fi
+
+        if [ "$_show_langfuse" = true ]; then
+            log_info "LLM Observability:"
+            echo -e "  ${GREEN}🔬 Langfuse:${NC}        ${PROTOCOL}://${LANGFUSE_DOMAIN} ${CYAN}(LLM Tracing & Eval)${NC}"
             echo ""
         fi
 
-        log_info "API Endpoints:"
-        echo -e "  ${CYAN}📚 Swagger UI:${NC}    ${PROTOCOL}://${API_DOMAIN}/api/v1/docs"
-        echo -e "  ${CYAN}📖 ReDoc:${NC}         ${PROTOCOL}://${API_DOMAIN}/api/v1/redoc"
-        echo -e "  ${CYAN}💚 Health:${NC}        ${PROTOCOL}://${API_DOMAIN}/health"
+        log_info "API Documentation:"
+        echo -e "  ${CYAN}📚 Swagger UI:${NC}      ${PROTOCOL}://${API_DOMAIN}/api/v1/docs ${CYAN}(Interactive API docs)${NC}"
+        echo -e "  ${CYAN}📖 ReDoc:${NC}           ${PROTOCOL}://${API_DOMAIN}/api/v1/redoc ${CYAN}(Alternative API docs)${NC}"
+        echo -e "  ${CYAN}💚 Health Check:${NC}    ${PROTOCOL}://${API_DOMAIN}/health"
+        echo -e "  ${CYAN}🔍 Readiness:${NC}       ${PROTOCOL}://${API_DOMAIN}/ready"
         echo ""
 
-        log_info "Local access (via SSH tunnel):"
-        echo -e "  ${CYAN}📊 Traefik:${NC}       ssh -L 8080:127.0.0.1:8080 root@SERVER_IP"
-        echo -e "  ${CYAN}🐘 PostgreSQL:${NC}   ssh -L 5432:127.0.0.1:5432 root@SERVER_IP"
+        log_info "Local Access (SSH Tunnel Required):"
+        echo -e "  ${CYAN}📊 Traefik:${NC}         ssh -L 8080:127.0.0.1:8080 root@SERVER_IP ${CYAN}(http://localhost:8080)${NC}"
+        echo -e "  ${CYAN}🐘 PostgreSQL:${NC}      ssh -L 5432:127.0.0.1:5432 root@SERVER_IP ${CYAN}(psql -h localhost)${NC}"
         echo ""
 
         log_info "Useful commands:"
@@ -333,52 +351,69 @@ start_cluster() {
     else
         # Local mode URLs (development)
         log_info "Application:"
-        echo -e "  ${GREEN}🌐 Web App:${NC}       ${PROTOCOL}://${DOMAIN}"
+        echo -e "  ${GREEN}🌐 Web App:${NC}         ${PROTOCOL}://${DOMAIN}"
+        echo -e "  ${GREEN}🚀 API:${NC}             ${PROTOCOL}://${API_DOMAIN}"
         echo ""
 
-        log_info "Core Services:"
-        echo -e "  ${GREEN}🔐 Authentik:${NC}     ${PROTOCOL}://${AUTHENTIK_DOMAIN}"
-        echo -e "  ${GREEN}🚀 API:${NC}           ${PROTOCOL}://${API_DOMAIN}"
-        echo -e "  ${GREEN}🔍 Qdrant:${NC}        ${PROTOCOL}://${QDRANT_DOMAIN}"
-        echo -e "  ${GREEN}📦 MinIO:${NC}         ${PROTOCOL}://${MINIO_DOMAIN}"
-        echo -e "  ${GREEN}💾 S3 API:${NC}        ${PROTOCOL}://${S3_DOMAIN}"
-        echo -e "  ${GREEN}📡 NATS:${NC}          ${PROTOCOL}://${NATS_DOMAIN}"
-        echo -e "  ${GREEN}🗄️  PostgreSQL:${NC}   ${PROTOCOL}://${POSTGRES_DOMAIN}"
-        echo -e "  ${GREEN}🐳 Portainer:${NC}     ${PROTOCOL}://${PORTAINER_DOMAIN}"
-        echo -e "  ${GREEN}🎨 TensorBoard:${NC}   ${PROTOCOL}://${TENSORBOARD_DOMAIN}"
-        echo -e "  ${GREEN}📊 Traefik:${NC}       ${PROTOCOL}://${DOMAIN}:8080"
+        log_info "Authentication & Access Control:"
+        echo -e "  ${GREEN}🔐 Authentik:${NC}       ${PROTOCOL}://${AUTHENTIK_DOMAIN}"
+        echo ""
+
+        log_info "Data Services:"
+        echo -e "  ${GREEN}🔍 Qdrant:${NC}          ${PROTOCOL}://${QDRANT_DOMAIN} ${CYAN}(Vector DB UI)${NC}"
+        echo -e "  ${GREEN}🗄️  Adminer:${NC}         ${PROTOCOL}://${POSTGRES_DOMAIN} ${CYAN}(PostgreSQL Admin)${NC}"
+        echo -e "  ${GREEN}📦 MinIO Console:${NC}   ${PROTOCOL}://${MINIO_DOMAIN} ${CYAN}(S3 Storage UI)${NC}"
+        echo -e "  ${GREEN}💾 S3 API:${NC}           ${PROTOCOL}://${S3_DOMAIN} ${CYAN}(S3-compatible endpoint)${NC}"
+        echo ""
+
+        log_info "Infrastructure:"
+        echo -e "  ${GREEN}📡 NATS:${NC}            ${PROTOCOL}://${NATS_DOMAIN} ${CYAN}(Message Queue UI)${NC}"
+        echo -e "  ${GREEN}🐳 Portainer:${NC}       ${PROTOCOL}://${PORTAINER_DOMAIN} ${CYAN}(Container Management)${NC}"
+        echo -e "  ${GREEN}🔀 Traefik:${NC}         ${PROTOCOL}://${DOMAIN}:8080 ${CYAN}(Reverse Proxy Dashboard)${NC}"
+        echo ""
+
+        log_info "ML & Analytics:"
+        echo -e "  ${GREEN}🎨 TensorBoard:${NC}     ${PROTOCOL}://${TENSORBOARD_DOMAIN} ${CYAN}(Training Metrics)${NC}"
         echo ""
 
         if [ -n "$OBSERVABILITY_PROFILE" ]; then
-            log_info "Observability Stack:"
-            echo -e "  ${GREEN}📊 Grafana:${NC}       ${PROTOCOL}://${GRAFANA_DOMAIN}"
-            echo -e "  ${GREEN}📈 Prometheus:${NC}    ${PROTOCOL}://${PROMETHEUS_DOMAIN}"
+            log_info "Observability:"
+            echo -e "  ${GREEN}📊 Grafana:${NC}         ${PROTOCOL}://${GRAFANA_DOMAIN} ${CYAN}(Dashboards)${NC}"
+            echo -e "  ${GREEN}📈 Prometheus:${NC}      ${PROTOCOL}://${PROMETHEUS_DOMAIN} ${CYAN}(Metrics DB)${NC}"
             echo ""
         fi
 
+        # Check if Langfuse is enabled (either via profile or if containers are running)
+        _show_langfuse=false
         if [ -n "$LANGFUSE_PROFILE" ]; then
-            log_info "LLM Tracing:"
-            echo -e "  ${GREEN}🔬 Langfuse:${NC}      ${PROTOCOL}://${LANGFUSE_DOMAIN}"
+            _show_langfuse=true
+        elif docker ps --filter "name=observability-langfuse" --format "{{.Names}}" 2>/dev/null | grep -q "observability-langfuse"; then
+            _show_langfuse=true
+        fi
+
+        if [ "$_show_langfuse" = true ]; then
+            log_info "LLM Observability:"
+            echo -e "  ${GREEN}🔬 Langfuse:${NC}        ${PROTOCOL}://${LANGFUSE_DOMAIN} ${CYAN}(LLM Tracing & Eval)${NC}"
             echo ""
         fi
 
-        log_info "API Endpoints:"
-        echo -e "  ${CYAN}📚 Swagger UI:${NC}    ${PROTOCOL}://${API_DOMAIN}/api/v1/docs"
-        echo -e "  ${CYAN}📖 ReDoc:${NC}         ${PROTOCOL}://${API_DOMAIN}/api/v1/redoc"
-        echo -e "  ${CYAN}💚 Health:${NC}        ${PROTOCOL}://${API_DOMAIN}/health"
-        echo -e "  ${CYAN}🔍 Readiness:${NC}     ${PROTOCOL}://${API_DOMAIN}/ready"
+        log_info "API Documentation:"
+        echo -e "  ${CYAN}📚 Swagger UI:${NC}      ${PROTOCOL}://${API_DOMAIN}/api/v1/docs ${CYAN}(Interactive API docs)${NC}"
+        echo -e "  ${CYAN}📖 ReDoc:${NC}           ${PROTOCOL}://${API_DOMAIN}/api/v1/redoc ${CYAN}(Alternative API docs)${NC}"
+        echo -e "  ${CYAN}💚 Health Check:${NC}    ${PROTOCOL}://${API_DOMAIN}/health"
+        echo -e "  ${CYAN}🔍 Readiness:${NC}       ${PROTOCOL}://${API_DOMAIN}/ready"
         echo ""
         echo -e "  ${YELLOW}Note:${NC} The API root path (/) returns 404. Use the endpoints above."
         echo ""
 
         log_info "API Resources (require authentication):"
-        echo -e "  ${CYAN}👤 Users:${NC}        http://api.localhost/api/v1/users"
-        echo -e "  ${CYAN}🤖 Assistants:${NC}   http://api.localhost/api/v1/assistants"
-        echo -e "  ${CYAN}💬 Chat:${NC}         http://api.localhost/api/v1/chat"
-        echo -e "  ${CYAN}🔗 Connectors:${NC}   http://api.localhost/api/v1/connectors"
-        echo -e "  ${CYAN}📄 Documents:${NC}    http://api.localhost/api/v1/documents"
-        echo -e "  ${CYAN}🧠 LLMs:${NC}         http://api.localhost/api/v1/llms"
-        echo -e "  ${CYAN}📊 Embeddings:${NC}   http://api.localhost/api/v1/embedding-models"
+        echo -e "  ${CYAN}👤 Users:${NC}           ${PROTOCOL}://${API_DOMAIN}/api/v1/users"
+        echo -e "  ${CYAN}🤖 Assistants:${NC}      ${PROTOCOL}://${API_DOMAIN}/api/v1/assistants"
+        echo -e "  ${CYAN}💬 Chat:${NC}            ${PROTOCOL}://${API_DOMAIN}/api/v1/chat"
+        echo -e "  ${CYAN}🔗 Connectors:${NC}      ${PROTOCOL}://${API_DOMAIN}/api/v1/connectors"
+        echo -e "  ${CYAN}📄 Documents:${NC}       ${PROTOCOL}://${API_DOMAIN}/api/v1/documents"
+        echo -e "  ${CYAN}🧠 LLMs:${NC}            ${PROTOCOL}://${API_DOMAIN}/api/v1/llms"
+        echo -e "  ${CYAN}📊 Embeddings:${NC}      ${PROTOCOL}://${API_DOMAIN}/api/v1/embedding-models"
         echo ""
 
         log_info "Useful commands:"
@@ -443,8 +478,51 @@ show_status() {
     echo ""
 
     cd "$SCRIPT_DIR"
-    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE ps
 
+    # Get all containers
+    ALL_CONTAINERS=$(docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE ps --format "{{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null)
+
+    # Group containers by prefix
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}🚀 Application Services${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo "$ALL_CONTAINERS" | grep "^echomind-" | awk -F'\t' '{printf "  %-30s %s\n", $1, $2}' || echo "  ${YELLOW}No application services running${NC}"
+    echo ""
+
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}🗄️  Data Services${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo "$ALL_CONTAINERS" | grep "^data-" | awk -F'\t' '{printf "  %-30s %s\n", $1, $2}' || echo "  ${YELLOW}No data services running${NC}"
+    echo ""
+
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}🏗️  Infrastructure Services${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo "$ALL_CONTAINERS" | grep "^infra-" | awk -F'\t' '{printf "  %-30s %s\n", $1, $2}' || echo "  ${YELLOW}No infrastructure services running${NC}"
+    echo ""
+
+    if echo "$ALL_CONTAINERS" | grep -q "^observability-"; then
+        echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${MAGENTA}📊 Observability Services${NC}"
+        echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo "$ALL_CONTAINERS" | grep "^observability-" | awk -F'\t' '{printf "  %-30s %s\n", $1, $2}'
+        echo ""
+    fi
+
+    if echo "$ALL_CONTAINERS" | grep -q "^init-"; then
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${YELLOW}⚙️  Initialization Jobs${NC}"
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo "$ALL_CONTAINERS" | grep "^init-" | awk -F'\t' '{printf "  %-30s %s\n", $1, $2}'
+        echo ""
+    fi
+
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+    # Summary
+    TOTAL=$(echo "$ALL_CONTAINERS" | wc -l | tr -d ' ')
+    RUNNING=$(echo "$ALL_CONTAINERS" | grep -c "Up" || echo "0")
+    echo -e "${CYAN}📈 Summary:${NC} ${GREEN}${RUNNING}${NC}/${TOTAL} containers running"
     echo ""
 }
 

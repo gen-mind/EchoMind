@@ -9,7 +9,7 @@ services:
   # ============================================
   prometheus:
     image: prom/prometheus:v3.5.1
-    container_name: echomind-prometheus
+    container_name: observability-prometheus
     profiles: ["observability"]
     volumes:
       - ${CONFIG_PATH}/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -32,7 +32,7 @@ services:
     labels:
       - "traefik.enable=true"
       # Local mode
-      - "traefik.http.routers.prometheus.rule=Host(`prometheus.${DOMAIN}`)"
+      - "traefik.http.routers.prometheus.rule=Host(`${PROMETHEUS_DOMAIN}`)"
       - "traefik.http.routers.prometheus.entrypoints=web"
       - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
 
@@ -41,7 +41,7 @@ services:
   # ============================================
   loki:
     image: grafana/loki:3.6.0
-    container_name: echomind-loki
+    container_name: observability-loki
     profiles: ["observability"]
     volumes:
       - ${CONFIG_PATH}/observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
@@ -56,7 +56,7 @@ services:
   # ============================================
   alloy:
     image: grafana/alloy:v1.11.3
-    container_name: echomind-alloy
+    container_name: observability-alloy
     profiles: ["observability"]
     volumes:
       - ${CONFIG_PATH}/observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
@@ -79,7 +79,7 @@ services:
   # ============================================
   nats-exporter:
     image: natsio/prometheus-nats-exporter:latest
-    container_name: echomind-nats-exporter
+    container_name: observability-nats-exporter
     profiles: ["observability"]
     command: -varz -jsz all http://nats:8222
     depends_on:
@@ -94,7 +94,7 @@ services:
   # ============================================
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:latest
-    container_name: echomind-postgres-exporter
+    container_name: observability-postgres-exporter
     profiles: ["observability"]
     environment:
       DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable"
@@ -109,7 +109,7 @@ services:
   # ============================================
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.51.0
-    container_name: echomind-cadvisor
+    container_name: observability-cadvisor
     profiles: ["observability"]
     volumes:
       - /:/rootfs:ro
@@ -126,7 +126,7 @@ services:
   # ============================================
   node-exporter:
     image: prom/node-exporter:v1.9.0
-    container_name: echomind-node-exporter
+    container_name: observability-node-exporter
     profiles: ["observability"]
     volumes:
       - /proc:/host/proc:ro
@@ -146,7 +146,7 @@ services:
   # ============================================
   grafana:
     image: grafana/grafana:12.3.2
-    container_name: echomind-grafana
+    container_name: observability-grafana
     profiles: ["observability"]
     volumes:
       - ${CONFIG_PATH}/observability/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -154,8 +154,8 @@ services:
       - grafana_data:/var/lib/grafana
     environment:
       # --- Server ---
-      - GF_SERVER_ROOT_URL=${PROTOCOL}://grafana.${DOMAIN}
-      - GF_SERVER_DOMAIN=grafana.${DOMAIN}
+      - GF_SERVER_ROOT_URL=${PROTOCOL}://${GRAFANA_DOMAIN}
+      - GF_SERVER_DOMAIN=${GRAFANA_DOMAIN}
 
       # --- Admin ---
       - GF_SECURITY_ADMIN_USER=admin
@@ -216,7 +216,7 @@ services:
     labels:
       - "traefik.enable=true"
       # Local mode
-      - "traefik.http.routers.grafana.rule=Host(`grafana.${DOMAIN}`)"
+      - "traefik.http.routers.grafana.rule=Host(`${GRAFANA_DOMAIN}`)"
       - "traefik.http.routers.grafana.entrypoints=web"
       - "traefik.http.services.grafana.loadbalancer.server.port=3000"
 

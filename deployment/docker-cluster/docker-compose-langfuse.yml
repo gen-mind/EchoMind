@@ -9,7 +9,7 @@ services:
   # ============================================
   langfuse-minio-init:
     image: minio/mc:latest
-    container_name: echomind-langfuse-minio-init
+    container_name: init-langfuse-bucket
     profiles: ["langfuse"]
     entrypoint: >
       /bin/sh -c "
@@ -32,7 +32,7 @@ services:
   # ============================================
   langfuse-clickhouse:
     image: clickhouse/clickhouse-server:24.12
-    container_name: echomind-langfuse-clickhouse
+    container_name: data-clickhouse
     hostname: langfuse-clickhouse
     profiles: ["langfuse"]
     environment:
@@ -59,7 +59,7 @@ services:
   # ============================================
   langfuse-web:
     image: langfuse/langfuse:3
-    container_name: echomind-langfuse-web
+    container_name: observability-langfuse
     hostname: langfuse-web
     profiles: ["langfuse"]
     environment:
@@ -135,7 +135,7 @@ services:
       - backend
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.langfuse.rule=Host(`langfuse.${DOMAIN}`)"
+      - "traefik.http.routers.langfuse.rule=Host(`${LANGFUSE_DOMAIN}`)"
       - "traefik.http.routers.langfuse.entrypoints=web"
       - "traefik.http.services.langfuse.loadbalancer.server.port=3000"
 
@@ -144,7 +144,7 @@ services:
   # ============================================
   langfuse-worker:
     image: langfuse/langfuse-worker:3
-    container_name: echomind-langfuse-worker
+    container_name: observability-langfuse-worker
     hostname: langfuse-worker
     profiles: ["langfuse"]
     environment:

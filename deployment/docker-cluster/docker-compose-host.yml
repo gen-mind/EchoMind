@@ -58,7 +58,7 @@ services:
   # ===============================================
   traefik:
     image: traefik:v3.3
-    container_name: echomind-traefik
+    container_name: infra-traefik
     hostname: traefik
     ports:
       - "80:80"
@@ -106,7 +106,7 @@ services:
   # ===============================================
   postgres:
     image: postgres:16.4
-    container_name: echomind-postgres
+    container_name: data-postgres
     hostname: postgres
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
@@ -136,7 +136,7 @@ services:
   # ===============================================
   adminer:
     image: adminer:4.8.1-standalone
-    container_name: echomind-adminer
+    container_name: infra-adminer
     hostname: adminer
     environment:
       - ADMINER_DEFAULT_SERVER=postgres
@@ -162,7 +162,7 @@ services:
   # ===============================================
   authentik-server:
     image: ghcr.io/goauthentik/server:2025.10.3
-    container_name: echomind-authentik-server
+    container_name: infra-authentik-server
     hostname: authentik-server
     command: server
     environment:
@@ -201,7 +201,7 @@ services:
   # ===============================================
   authentik-worker:
     image: ghcr.io/goauthentik/server:2025.10.3
-    container_name: echomind-authentik-worker
+    container_name: infra-authentik-worker
     hostname: authentik-worker
     command: worker
     environment:
@@ -229,7 +229,7 @@ services:
   # ===============================================
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: echomind-qdrant
+    container_name: data-qdrant
     hostname: qdrant
     # NO ports - internal only, exposed via Traefik
     volumes:
@@ -257,7 +257,7 @@ services:
   # ===============================================
   minio:
     image: minio/minio:latest
-    container_name: echomind-minio
+    container_name: data-minio
     hostname: minio
     command: server /data --console-address ":9001"
     environment:
@@ -297,7 +297,7 @@ services:
   # ===============================================
   nats:
     image: nats:alpine
-    container_name: echomind-nats
+    container_name: infra-nats
     hostname: nats
     # NO ports - internal only
     volumes:
@@ -353,7 +353,7 @@ services:
   # ===============================================
   redis:
     image: redis:7-alpine
-    container_name: echomind-redis
+    container_name: data-redis
     hostname: redis
     command: >
       redis-server
@@ -468,7 +468,7 @@ services:
     build:
       context: ../../src
       dockerfile: migration/Dockerfile
-    container_name: echomind-migration
+    container_name: init-migration
     hostname: migration
     env_file:
       - ${CONFIG_PATH}/migration/migration.env
@@ -675,7 +675,7 @@ services:
   # ===============================================
   portainer:
     image: portainer/portainer-ce:alpine
-    container_name: echomind-portainer
+    container_name: infra-portainer
     hostname: portainer
     restart: unless-stopped
     healthcheck:
@@ -701,7 +701,7 @@ services:
   # ===============================================
   tensorboard:
     image: tensorflow/tensorflow:2.18.0
-    container_name: echomind-tensorboard
+    container_name: observability-tensorboard
     hostname: tensorboard
     command: tensorboard --logdir /logs --host 0.0.0.0 --port 6006
     volumes:
