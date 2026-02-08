@@ -12,7 +12,9 @@ echo ""
 
 if [ -f .env ]; then
     echo "✅ Loading .env..."
-    export $(grep -v '^#' .env | xargs)
+    set -a
+    source .env
+    set +a
 else
     echo "❌ .env not found!"
     exit 1
