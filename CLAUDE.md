@@ -40,6 +40,9 @@ EchoMind is a **Python-only Agentic RAG** platform with multi-step retrieval, to
 4. **Emoji logging required** - See `.claude/rules/logging.md`
 5. **Unit tests MANDATORY** - 100% coverage for new code. See `.claude/rules/testing.md`
 6. **FAANG Principal Engineer Quality** - No hacks, no shortcuts, no fake implementations
+7. **Proto Generation** - When creating or editing `.proto` files, ALL entities must be regenerated via `scripts/generate_proto.sh`. Never hand-edit generated files.
+8. **WebUI Location** - The WebUI codebase is at a separate repo (`echo-mind-webui`), not inside `echo-mind`.
+9. **Sample Directory** - Do NOT read or change anything in `sample/` directories unless explicitly requested by the user.
 
 ---
 

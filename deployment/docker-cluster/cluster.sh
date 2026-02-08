@@ -67,18 +67,21 @@ MODE=""
 COMPOSE_FILE=""
 ENV_SOURCE=""
 DOMAIN=""
+COMPOSE_ENV_FLAG=""
 
 # Parse mode flag (must be first argument)
 if [ "${1:-}" = "--host" ] || [ "${1:-}" = "-H" ]; then
     MODE="host"
     COMPOSE_FILE="docker-compose-host.yml"
-    ENV_SOURCE=".env.host"
+    ENV_SOURCE=".env"
+    COMPOSE_ENV_FLAG="--env-file .env"
     DOMAIN="demo.echomind.ch"
     shift  # Remove the flag from arguments
 elif [ "${1:-}" = "--local" ] || [ "${1:-}" = "-L" ]; then
     MODE="local"
     COMPOSE_FILE="docker-compose.yml"
     ENV_SOURCE=".env"
+    COMPOSE_ENV_FLAG="--env-file .env"
     DOMAIN="localhost"
     shift  # Remove the flag from arguments
 elif [ "${1:-}" = "help" ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
@@ -99,6 +102,62 @@ else
     echo ""
     echo "Run './cluster.sh help' for full usage information."
     exit 1
+fi
+
+# Source environment file and export all variables
+# This ensures docker-compose can interpolate variables without warnings
+cd "$SCRIPT_DIR"
+
+# Check if .env file exists (REQUIRED)
+if [ ! -f ".env" ]; then
+    echo -e "${RED}❌ Error: .env file not found!${NC}"
+    echo ""
+    echo "Please create .env file from template:"
+    if [ "$MODE" = "host" ]; then
+        echo "  cp .env.host .env"
+        echo "  nano .env  # Edit with your actual secrets"
+    else
+        echo "  cp .env.example .env"
+        echo "  nano .env  # Edit with your local settings"
+    fi
+    echo ""
+    exit 1
+fi
+
+if [ -f "$ENV_SOURCE" ]; then
+    set -a  # Automatically export all variables
+    source "$ENV_SOURCE"
+    set +a  # Stop auto-exporting
+fi
+
+# Read ENABLE_OBSERVABILITY from .env
+OBSERVABILITY_PROFILE=""
+OBSERVABILITY_FILES=""
+_obs_enabled=false
+if [ -f "$SCRIPT_DIR/.env" ] && grep -q "^[[:space:]]*ENABLE_OBSERVABILITY[[:space:]]*=[[:space:]]*true" "$SCRIPT_DIR/.env" 2>/dev/null; then
+    _obs_enabled=true
+fi
+if [ "$_obs_enabled" = true ]; then
+    OBSERVABILITY_PROFILE="--profile observability"
+    OBSERVABILITY_FILES="-f docker-compose-observability.yml"
+    if [ "$MODE" = "host" ]; then
+        OBSERVABILITY_FILES="$OBSERVABILITY_FILES -f docker-compose-observability-host.yml"
+    fi
+fi
+
+# Read ENABLE_LANGFUSE from .env
+LANGFUSE_PROFILE=""
+LANGFUSE_FILES=""
+_langfuse_enabled=false
+if [ -f "$SCRIPT_DIR/.env" ] && grep -q "^[[:space:]]*ENABLE_LANGFUSE[[:space:]]*=[[:space]]*true" "$SCRIPT_DIR/.env" 2>/dev/null; then
+    _langfuse_enabled=true
+fi
+if [ "$_langfuse_enabled" = true ]; then
+    LANGFUSE_PROFILE="--profile langfuse"
+    LANGFUSE_FILES="-f docker-compose-langfuse.yml"
+    if [ "$MODE" = "host" ]; then
+        LANGFUSE_FILES="$LANGFUSE_FILES -f docker-compose-langfuse-host.yml"
+    fi
 fi
 
 # Functions
@@ -172,6 +231,7 @@ create_directories() {
     mkdir -p "$PROJECT_ROOT/data/qdrant"
     mkdir -p "$PROJECT_ROOT/data/minio"
     mkdir -p "$PROJECT_ROOT/data/nats"
+    mkdir -p "$PROJECT_ROOT/data/tensorboard"
     mkdir -p "$PROJECT_ROOT/data/authentik/media"
     mkdir -p "$PROJECT_ROOT/data/authentik/custom-templates"
     mkdir -p "$PROJECT_ROOT/data/authentik/certs"
@@ -180,6 +240,22 @@ create_directories() {
     # Host mode includes portainer
     if [ "$MODE" = "host" ]; then
         mkdir -p "$PROJECT_ROOT/data/portainer"
+    fi
+
+    # Observability data directories (containers run as non-root users)
+    if [ -n "$OBSERVABILITY_PROFILE" ]; then
+        mkdir -p "$PROJECT_ROOT/data/prometheus"
+        mkdir -p "$PROJECT_ROOT/data/loki"
+        mkdir -p "$PROJECT_ROOT/data/grafana"
+        chown -R 65534:65534 "$PROJECT_ROOT/data/prometheus"  # prometheus runs as nobody
+        chown -R 10001:10001 "$PROJECT_ROOT/data/loki"        # loki runs as uid 10001
+        chown -R 472:472 "$PROJECT_ROOT/data/grafana"         # grafana runs as uid 472
+    fi
+
+    # Langfuse data directories (ClickHouse)
+    if [ -n "$LANGFUSE_PROFILE" ]; then
+        mkdir -p "$PROJECT_ROOT/data/clickhouse"
+        mkdir -p "$PROJECT_ROOT/data/clickhouse-logs"
     fi
 
     log_success "Data directories created"
@@ -200,8 +276,8 @@ start_cluster() {
     cd "$SCRIPT_DIR"
     # Use down + up to ensure env vars from .env are always applied
     # (--force-recreate alone doesn't always work)
-    docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true
-    docker compose -f "$COMPOSE_FILE" up -d
+    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE down 2>/dev/null || true
+    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE up -d
 
     echo ""
     log_success "Cluster started successfully!"
@@ -210,24 +286,42 @@ start_cluster() {
     if [ "$MODE" = "host" ]; then
         # Host mode URLs (production)
         log_info "Application:"
-        echo -e "  ${GREEN}🌐 Web App:${NC}    https://demo.echomind.ch"
+        echo -e "  ${GREEN}🌐 Web App:${NC}       ${PROTOCOL}://${DOMAIN}"
         echo ""
 
-        log_info "Services available at:"
-        echo -e "  ${GREEN}🔐 Authentik:${NC}  https://auth.demo.echomind.ch"
-        echo -e "  ${GREEN}📦 MinIO:${NC}      https://minio.demo.echomind.ch"
-        echo -e "  ${GREEN}🔍 Qdrant:${NC}     https://qdrant.demo.echomind.ch"
-        echo -e "  ${GREEN}🐳 Portainer:${NC}  https://portainer.demo.echomind.ch"
+        log_info "Core Services:"
+        echo -e "  ${GREEN}🔐 Authentik:${NC}     ${PROTOCOL}://${AUTHENTIK_DOMAIN}"
+        echo -e "  ${GREEN}🚀 API:${NC}           ${PROTOCOL}://${API_DOMAIN}"
+        echo -e "  ${GREEN}🔍 Qdrant:${NC}        ${PROTOCOL}://${QDRANT_DOMAIN}"
+        echo -e "  ${GREEN}📦 MinIO:${NC}         ${PROTOCOL}://${MINIO_DOMAIN}"
+        echo -e "  ${GREEN}💾 S3 API:${NC}        ${PROTOCOL}://${S3_DOMAIN}"
+        echo -e "  ${GREEN}📡 NATS:${NC}          ${PROTOCOL}://${NATS_DOMAIN}"
+        echo -e "  ${GREEN}🗄️  PostgreSQL:${NC}   ${PROTOCOL}://${POSTGRES_DOMAIN}"
+        echo -e "  ${GREEN}🐳 Portainer:${NC}     ${PROTOCOL}://${PORTAINER_DOMAIN}"
+        echo -e "  ${GREEN}🎨 TensorBoard:${NC}   ${PROTOCOL}://${TENSORBOARD_DOMAIN}"
         echo ""
 
-        log_info "API Endpoints (base: https://api.demo.echomind.ch):"
-        echo -e "  ${CYAN}📚 Swagger UI:${NC}   https://api.demo.echomind.ch/api/v1/docs"
-        echo -e "  ${CYAN}📖 ReDoc:${NC}        https://api.demo.echomind.ch/api/v1/redoc"
-        echo -e "  ${CYAN}💚 Health:${NC}       https://api.demo.echomind.ch/health"
+        if [ -n "$OBSERVABILITY_PROFILE" ]; then
+            log_info "Observability Stack:"
+            echo -e "  ${GREEN}📊 Grafana:${NC}       ${PROTOCOL}://${GRAFANA_DOMAIN}"
+            echo -e "  ${GREEN}📈 Prometheus:${NC}    ${PROTOCOL}://${PROMETHEUS_DOMAIN}"
+            echo ""
+        fi
+
+        if [ -n "$LANGFUSE_PROFILE" ]; then
+            log_info "LLM Tracing:"
+            echo -e "  ${GREEN}🔬 Langfuse:${NC}      ${PROTOCOL}://${LANGFUSE_DOMAIN}"
+            echo ""
+        fi
+
+        log_info "API Endpoints:"
+        echo -e "  ${CYAN}📚 Swagger UI:${NC}    ${PROTOCOL}://${API_DOMAIN}/api/v1/docs"
+        echo -e "  ${CYAN}📖 ReDoc:${NC}         ${PROTOCOL}://${API_DOMAIN}/api/v1/redoc"
+        echo -e "  ${CYAN}💚 Health:${NC}        ${PROTOCOL}://${API_DOMAIN}/health"
         echo ""
 
         log_info "Local access (via SSH tunnel):"
-        echo -e "  ${CYAN}📊 Traefik:${NC}      ssh -L 8080:127.0.0.1:8080 root@SERVER_IP"
+        echo -e "  ${CYAN}📊 Traefik:${NC}       ssh -L 8080:127.0.0.1:8080 root@SERVER_IP"
         echo -e "  ${CYAN}🐘 PostgreSQL:${NC}   ssh -L 5432:127.0.0.1:5432 root@SERVER_IP"
         echo ""
 
@@ -239,20 +333,40 @@ start_cluster() {
     else
         # Local mode URLs (development)
         log_info "Application:"
-        echo -e "  ${GREEN}🌐 Web App:${NC}    http://localhost"
+        echo -e "  ${GREEN}🌐 Web App:${NC}       ${PROTOCOL}://${DOMAIN}"
         echo ""
 
-        log_info "Services available at:"
-        echo -e "  ${GREEN}🔐 Authentik:${NC}  http://auth.localhost"
-        echo -e "  ${GREEN}📦 MinIO:${NC}      http://minio.localhost"
-        echo -e "  ${GREEN}📊 Traefik:${NC}    http://localhost:8080"
+        log_info "Core Services:"
+        echo -e "  ${GREEN}🔐 Authentik:${NC}     ${PROTOCOL}://${AUTHENTIK_DOMAIN}"
+        echo -e "  ${GREEN}🚀 API:${NC}           ${PROTOCOL}://${API_DOMAIN}"
+        echo -e "  ${GREEN}🔍 Qdrant:${NC}        ${PROTOCOL}://${QDRANT_DOMAIN}"
+        echo -e "  ${GREEN}📦 MinIO:${NC}         ${PROTOCOL}://${MINIO_DOMAIN}"
+        echo -e "  ${GREEN}💾 S3 API:${NC}        ${PROTOCOL}://${S3_DOMAIN}"
+        echo -e "  ${GREEN}📡 NATS:${NC}          ${PROTOCOL}://${NATS_DOMAIN}"
+        echo -e "  ${GREEN}🗄️  PostgreSQL:${NC}   ${PROTOCOL}://${POSTGRES_DOMAIN}"
+        echo -e "  ${GREEN}🐳 Portainer:${NC}     ${PROTOCOL}://${PORTAINER_DOMAIN}"
+        echo -e "  ${GREEN}🎨 TensorBoard:${NC}   ${PROTOCOL}://${TENSORBOARD_DOMAIN}"
+        echo -e "  ${GREEN}📊 Traefik:${NC}       ${PROTOCOL}://${DOMAIN}:8080"
         echo ""
 
-        log_info "API Endpoints (base: http://api.localhost):"
-        echo -e "  ${CYAN}📚 Swagger UI:${NC}   http://api.localhost/api/v1/docs"
-        echo -e "  ${CYAN}📖 ReDoc:${NC}        http://api.localhost/api/v1/redoc"
-        echo -e "  ${CYAN}💚 Health:${NC}       http://api.localhost/health"
-        echo -e "  ${CYAN}🔍 Readiness:${NC}    http://api.localhost/ready"
+        if [ -n "$OBSERVABILITY_PROFILE" ]; then
+            log_info "Observability Stack:"
+            echo -e "  ${GREEN}📊 Grafana:${NC}       ${PROTOCOL}://${GRAFANA_DOMAIN}"
+            echo -e "  ${GREEN}📈 Prometheus:${NC}    ${PROTOCOL}://${PROMETHEUS_DOMAIN}"
+            echo ""
+        fi
+
+        if [ -n "$LANGFUSE_PROFILE" ]; then
+            log_info "LLM Tracing:"
+            echo -e "  ${GREEN}🔬 Langfuse:${NC}      ${PROTOCOL}://${LANGFUSE_DOMAIN}"
+            echo ""
+        fi
+
+        log_info "API Endpoints:"
+        echo -e "  ${CYAN}📚 Swagger UI:${NC}    ${PROTOCOL}://${API_DOMAIN}/api/v1/docs"
+        echo -e "  ${CYAN}📖 ReDoc:${NC}         ${PROTOCOL}://${API_DOMAIN}/api/v1/redoc"
+        echo -e "  ${CYAN}💚 Health:${NC}        ${PROTOCOL}://${API_DOMAIN}/health"
+        echo -e "  ${CYAN}🔍 Readiness:${NC}     ${PROTOCOL}://${API_DOMAIN}/ready"
         echo ""
         echo -e "  ${YELLOW}Note:${NC} The API root path (/) returns 404. Use the endpoints above."
         echo ""
@@ -283,7 +397,7 @@ stop_cluster() {
     echo ""
 
     cd "$SCRIPT_DIR"
-    docker compose -f "$COMPOSE_FILE" down
+    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE down
 
     echo ""
     log_success "Cluster stopped successfully!"
@@ -298,9 +412,11 @@ restart_cluster() {
     log_info "Using down + up to ensure env vars are refreshed"
     echo ""
 
+    create_directories
+
     cd "$SCRIPT_DIR"
-    docker compose -f "$COMPOSE_FILE" down
-    docker compose -f "$COMPOSE_FILE" up -d
+    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE down
+    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE up -d
 
     echo ""
     log_success "Cluster restarted successfully!"
@@ -312,10 +428,10 @@ show_logs() {
 
     if [ -z "$1" ]; then
         log_info "Showing logs for all services (Ctrl+C to exit)..."
-        docker compose -f "$COMPOSE_FILE" logs -f
+        docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE logs -f
     else
         log_info "Showing logs for service: $1 (Ctrl+C to exit)..."
-        docker compose -f "$COMPOSE_FILE" logs -f "$1"
+        docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE logs -f "$1"
     fi
 }
 
@@ -327,7 +443,7 @@ show_status() {
     echo ""
 
     cd "$SCRIPT_DIR"
-    docker compose -f "$COMPOSE_FILE" ps
+    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE ps
 
     echo ""
 }
@@ -340,7 +456,7 @@ pull_images() {
     echo ""
 
     cd "$SCRIPT_DIR"
-    docker compose -f "$COMPOSE_FILE" pull
+    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE pull
 
     echo ""
     log_success "Images updated successfully!"
@@ -366,7 +482,13 @@ build_services() {
 
         for svc in "${services[@]}"; do
             log_info "Building ${svc}..."
-            docker compose -f "$COMPOSE_FILE" build "$svc"
+            # Pass HF_TOKEN as build arg if set (for model pre-download)
+            if [ -n "${HF_TOKEN:-}" ]; then
+                log_info "  Using HF_TOKEN for ${svc}"
+                docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE build --build-arg HF_TOKEN="$HF_TOKEN" "$svc"
+            else
+                docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE build "$svc"
+            fi
             log_success "${svc} built"
         done
 
@@ -377,7 +499,13 @@ build_services() {
         log_step "Building ${SERVICE}..."
         echo ""
 
-        docker compose -f "$COMPOSE_FILE" build "$SERVICE"
+        # Pass HF_TOKEN as build arg if set (for model pre-download)
+        if [ -n "${HF_TOKEN:-}" ]; then
+            log_info "Using HF_TOKEN for build"
+            docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE build --build-arg HF_TOKEN="$HF_TOKEN" "$SERVICE"
+        else
+            docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE build "$SERVICE"
+        fi
 
         echo ""
         log_success "${SERVICE} built!"
@@ -398,9 +526,17 @@ rebuild_service() {
     log_step "Rebuilding ${SERVICE} service..."
     echo ""
 
+    create_directories
+
     cd "$SCRIPT_DIR"
-    docker compose -f "$COMPOSE_FILE" build --no-cache "$SERVICE"
-    docker compose -f "$COMPOSE_FILE" up -d --force-recreate "$SERVICE"
+    # Pass HF_TOKEN as build arg if set (for model pre-download)
+    if [ -n "${HF_TOKEN:-}" ]; then
+        log_info "Using HF_TOKEN for build"
+        docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE build --no-cache --build-arg HF_TOKEN="$HF_TOKEN" "$SERVICE"
+    else
+        docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE build --no-cache "$SERVICE"
+    fi
+    docker compose $COMPOSE_ENV_FLAG -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE $LANGFUSE_FILES $LANGFUSE_PROFILE up -d --force-recreate "$SERVICE"
 
     echo ""
     log_success "${SERVICE} service rebuilt and restarted!"

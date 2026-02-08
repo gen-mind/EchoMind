@@ -28,7 +28,7 @@ class TestConnectorSettings:
         assert settings.max_file_size_bytes == 100 * 1024 * 1024
         assert settings.google_export_max_size_bytes == 10 * 1024 * 1024
         assert settings.health_port == 8080
-        assert settings.minio_bucket == "documents"
+        assert settings.minio_bucket == "echomind-documents"
         assert settings.max_retries == 3
         assert settings.retry_base_delay == 1.0
         assert settings.log_level == "INFO"

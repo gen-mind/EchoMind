@@ -1,10 +1,26 @@
 # EchoMind Ingestor Service Dependencies
-# Auto-generated from pyproject.toml
 
 # Core extraction (nv-ingest)
 nv-ingest-api>=26.1.0
 pypdfium2>=4.0.0
 pandas>=2.0.0
+
+# Undeclared nv-ingest-api dependencies
+# These are imported at module level by nv_ingest_api.interface.extract but NOT
+# declared in nv-ingest-api's pyproject.toml. Versions aligned with NVIDIA's own
+# conda env: sample/nv-ingest/conda/environments/nv_ingest_environment.base.yml
+langdetect>=1.0.9          # aggregators.py -> language.py (adobe PDF engine)
+requests>=2.28.2           # nim_client.py, helpers.py, tika.py
+opencv-python-headless>=4.8.0  # helpers.py, transforms.py (headless = no GUI deps)
+python-docx>=1.1.2         # docxreader.py (DOCX extraction)
+python-pptx>=1.0.2         # pptx_helper.py (PPTX extraction)
+scikit-learn>=1.6.0        # table_and_chart.py (image chart/table extraction)
+unstructured-client>=0.25.0  # unstructured_io.py (PDF engine)
+aiohttp>=3.9.0             # llama.py (PDF engine)
+pillow>=10.0.0             # aggregators.py, transforms.py
+numpy>=1.26.0              # used throughout nv-ingest-api
+nvidia-riva-client>=2.20.0 # parakeet.py (audio extraction, imported at module level by extract.py)
+scipy>=1.10.0              # parakeet.py (wavfile, imported at module level by extract.py)
 
 # HTML processing
 beautifulsoup4>=4.12.0
@@ -15,24 +31,30 @@ transformers>=4.40.0
 torch>=2.0.0
 
 # gRPC (Embedder client)
-grpcio>=1.60.0
-grpcio-tools>=1.60.0
-protobuf>=5.28.0
-protobuf-pydantic-gen>=0.1.8
+# Pinned to 1.67.1 to match nvidia-riva-client requirement.
+# gRPC wire protocol is cross-version compatible, so 1.67.1 client
+# works fine with the embedder server running 1.69.0.
+grpcio==1.67.1
+grpcio-tools==1.67.1
+protobuf==5.29.5
+protobuf-pydantic-gen==0.1.8
 
 # NATS JetStream
-nats-py>=2.6.0
+nats-py==2.12.0
 
 # Database
-asyncpg>=0.29.0
-sqlalchemy[asyncio]>=2.0.0
+asyncpg==0.31.0
+sqlalchemy[asyncio]==2.0.45
 
 # Object storage (MinIO)
-miniopy-async>=1.20.0
+miniopy-async==1.23.4
 
 # Vector database (Qdrant)
-qdrant-client>=1.12.0
+qdrant-client==1.16.2
+
+# LLM Observability
+langfuse==3.13.0
 
 # Configuration
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
+pydantic==2.12.5
+pydantic-settings==2.12.0

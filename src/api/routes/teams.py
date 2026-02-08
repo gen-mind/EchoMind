@@ -89,7 +89,7 @@ async def create_team(
     """
     Create a new team.
 
-    Requires admin or superadmin role.
+    Requires admin role.
 
     Args:
         data: The team creation data.

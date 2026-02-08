@@ -26,14 +26,34 @@ mkdir -p ../../data/authentik/{media,custom-templates,certs}
 # Set up .env file
 if [ ! -f .env ]; then
     if [ -f .env.host ]; then
-        echo "📄 Setting up .env from .env.host..."
+        echo "📄 Setting up .env from .env.host template..."
         cp .env.host .env
+        echo ""
+        echo "⚠️  IMPORTANT: Edit .env and replace ALL placeholder values!"
+        echo "   - CHANGE_ME_* values must be replaced with real secrets"
+        echo "   - your-domain.example.com → your actual domain"
+        echo "   - Generate secrets with: openssl rand -hex 32"
+        echo ""
+        echo "After editing .env, run this script again."
+        exit 1
     else
-        echo "❌ Error: .env.host not found!"
+        echo "❌ Error: .env.host template not found!"
         exit 1
     fi
 else
-    echo "✅ .env already exists, skipping..."
+    echo "✅ .env already exists"
+
+    # Check if .env still has placeholder values
+    if grep -q "CHANGE_ME_" .env 2>/dev/null; then
+        echo "⚠️  WARNING: .env contains placeholder values (CHANGE_ME_*)"
+        echo "   Please edit .env and replace all CHANGE_ME_* values with real secrets"
+        echo ""
+        read -p "Continue anyway? [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    fi
 fi
 
 # Configure UFW firewall (if available and running as root)

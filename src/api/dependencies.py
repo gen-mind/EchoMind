@@ -4,7 +4,10 @@ FastAPI dependency injection.
 Provides dependencies for database sessions, authentication, and services.
 """
 
+import logging
 from typing import Annotated, AsyncGenerator
+
+logger = logging.getLogger(__name__)
 
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
@@ -64,9 +67,10 @@ async def get_current_user(
         validator = get_jwt_validator()
         token_user = validator.validate_token(token)
     except Exception as e:
+        logger.info(f"🔒 Token validation failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {str(e)}",
+            detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -128,6 +132,58 @@ async def get_current_user_optional(
 OptionalUser = Annotated[TokenUser | None, Depends(get_current_user_optional)]
 
 
+async def get_verified_user_optional(
+    authorization: Annotated[str | None, Header()] = None,
+    db: AsyncSession = Depends(get_db_session),
+) -> TokenUser | None:
+    """
+    Get the current verified user if authenticated, None otherwise.
+
+    Unlike OptionalUser, this also verifies the user exists in the database.
+
+    Usage:
+        @app.get("/public")
+        async def public_endpoint(user: OptionalVerifiedUser):
+            if user:
+                # authenticated and verified
+            else:
+                # anonymous
+    """
+    token = extract_bearer_token(authorization)
+    if not token:
+        return None
+
+    try:
+        validator = get_jwt_validator()
+        token_user = validator.validate_token(token)
+    except Exception:
+        return None
+
+    # Look up user in database by external_id (Authentik sub)
+    result = await db.execute(
+        select(UserORM).where(UserORM.external_id == token_user.external_id)
+    )
+    db_user = result.scalar_one_or_none()
+
+    if db_user is None:
+        return None
+
+    # Return TokenUser with the database user ID and roles from JWT
+    return TokenUser(
+        id=db_user.id,
+        email=db_user.email,
+        user_name=db_user.user_name,
+        first_name=db_user.first_name,
+        last_name=db_user.last_name,
+        roles=token_user.roles,
+        groups=token_user.groups,
+        external_id=db_user.external_id,
+    )
+
+
+OptionalVerifiedUser = Annotated[TokenUser | None, Depends(get_verified_user_optional)]
+
+
 def require_role(role: str):
     """
     Dependency factory to require a specific role.
@@ -169,7 +225,6 @@ def require_any_role(*roles: str):
 
 
 AdminUser = Annotated[TokenUser, Depends(require_role("admin"))]
-SuperAdminUser = Annotated[TokenUser, Depends(require_role("superadmin"))]
 
 
 def get_nats() -> JetStreamPublisher | None:
@@ -216,3 +271,27 @@ def get_minio_client() -> "MinIOClient | None":
 
 
 MinioClient = Annotated["MinIOClient | None", Depends(get_minio_client)]
+
+
+def get_qdrant_client() -> "QdrantDB | None":
+    """
+    Get the Qdrant client if available.
+
+    Returns None if Qdrant is not initialized (graceful degradation).
+
+    Usage:
+        @app.post("/documents/search")
+        async def search(qdrant: QdrantClient):
+            if qdrant:
+                await qdrant.search(...)
+    """
+    from echomind_lib.db.qdrant import QdrantDB, get_qdrant
+
+    try:
+        return get_qdrant()
+    except RuntimeError:
+        # Qdrant not initialized - return None for graceful degradation
+        return None
+
+
+QdrantClient = Annotated["QdrantDB | None", Depends(get_qdrant_client)]

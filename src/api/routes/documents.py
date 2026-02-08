@@ -4,7 +4,7 @@ from fastapi import APIRouter, status
 from pydantic import BaseModel
 
 from api.converters import orm_to_document
-from api.dependencies import CurrentUser, DbSession
+from api.dependencies import CurrentUser, DbSession, MinioClient, QdrantClient
 from api.logic.document_service import DocumentService
 from echomind_lib.models.public import (
     Document,
@@ -33,6 +33,8 @@ class DocumentSearchResponse(BaseModel):
 async def list_documents(
     user: CurrentUser,
     db: DbSession,
+    qdrant: QdrantClient,
+    minio: MinioClient,
     page: int = 1,
     limit: int = 20,
     connector_id: int | None = None,
@@ -50,6 +52,8 @@ async def list_documents(
     Args:
         user: The authenticated user.
         db: Database session.
+        qdrant: Qdrant client for vector operations.
+        minio: MinIO client for file operations.
         page: Page number for pagination.
         limit: Number of items per page.
         connector_id: Optional filter by connector.
@@ -58,7 +62,7 @@ async def list_documents(
     Returns:
         ListDocumentsResponse: Paginated list of documents.
     """
-    service = DocumentService(db)
+    service = DocumentService(db, qdrant=qdrant, minio=minio)
     db_documents = await service.list_documents(
         user=user,
         page=page,
@@ -75,6 +79,8 @@ async def list_documents(
 async def search_documents(
     user: CurrentUser,
     db: DbSession,
+    qdrant: QdrantClient,
+    minio: MinioClient,
     query: str,
     connector_id: int | None = None,
     limit: int = 10,
@@ -91,6 +97,8 @@ async def search_documents(
     Args:
         user: The authenticated user.
         db: Database session.
+        qdrant: Qdrant client for vector operations.
+        minio: MinIO client for file operations.
         query: The search query string.
         connector_id: Optional filter by connector.
         limit: Maximum number of results (max 50).
@@ -99,7 +107,7 @@ async def search_documents(
     Returns:
         DocumentSearchResponse: List of matching documents with scores.
     """
-    service = DocumentService(db)
+    service = DocumentService(db, qdrant=qdrant, minio=minio)
     results = await service.search_documents(
         user=user,
         query_text=query,
@@ -127,6 +135,8 @@ async def get_document(
     document_id: int,
     user: CurrentUser,
     db: DbSession,
+    qdrant: QdrantClient,
+    minio: MinioClient,
 ) -> Document:
     """
     Get a document by ID.
@@ -142,6 +152,8 @@ async def get_document(
         document_id: The ID of the document to retrieve.
         user: The authenticated user.
         db: Database session.
+        qdrant: Qdrant client for vector operations.
+        minio: MinIO client for file operations.
 
     Returns:
         Document: The requested document.
@@ -150,7 +162,7 @@ async def get_document(
         HTTPException: 404 if document not found.
         HTTPException: 403 if user lacks permission.
     """
-    service = DocumentService(db)
+    service = DocumentService(db, qdrant=qdrant, minio=minio)
     document = await service.get_document(document_id, user)
     return orm_to_document(document)
 
@@ -160,6 +172,8 @@ async def delete_document(
     document_id: int,
     user: CurrentUser,
     db: DbSession,
+    qdrant: QdrantClient,
+    minio: MinioClient,
 ) -> None:
     """
     Delete a document and its chunks from the vector store.
@@ -174,10 +188,13 @@ async def delete_document(
         document_id: The ID of the document to delete.
         user: The authenticated user.
         db: Database session.
+        qdrant: Qdrant client for vector operations.
+        minio: MinIO client for file operations.
 
     Raises:
         HTTPException: 404 if document not found.
         HTTPException: 403 if user lacks permission.
+        HTTPException: 503 if storage services unavailable.
     """
-    service = DocumentService(db)
+    service = DocumentService(db, qdrant=qdrant, minio=minio)
     await service.delete_document(document_id, user)

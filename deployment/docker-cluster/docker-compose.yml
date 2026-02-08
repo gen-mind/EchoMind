@@ -70,6 +70,8 @@ services:
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--log.level=INFO"
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.entrypoint=traefik"
     labels:
       - "traefik.enable=true"
 
@@ -99,6 +101,32 @@ services:
       - backend
     labels:
       - "traefik.enable=false"
+
+  # ===============================================
+  # Adminer - PostgreSQL Web UI (Protected by Authentik)
+  # ===============================================
+  adminer:
+    image: adminer:4.8.1-standalone
+    container_name: echomind-adminer
+    hostname: adminer
+    ports:
+      - "8081:8080"  # Exposed for local development
+    environment:
+      - ADMINER_DEFAULT_SERVER=postgres
+      - ADMINER_DESIGN=pepa-linha-dark
+      - ADMINER_PLUGINS=tables-filter tinymce
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.adminer.rule=Host(`${POSTGRES_DOMAIN}`)"
+      - "traefik.http.routers.adminer.entrypoints=web"
+      - "traefik.http.services.adminer.loadbalancer.server.port=8080"
 
   # ===============================================
   # Authentik Server - OIDC Provider
@@ -200,6 +228,7 @@ services:
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - MINIO_PROMETHEUS_AUTH_TYPE=public
     ports:
       - "9000:9000"  # API
       - "9001:9001"  # Console
@@ -249,6 +278,61 @@ services:
       - "traefik.enable=false"
 
   # ===============================================
+  # Nui - NATS Management UI (Protected by Authentik)
+  # ===============================================
+  nui:
+    image: ghcr.io/nats-nui/nui:latest
+    container_name: echomind-nui
+    hostname: nui
+    ports:
+      - "31311:31311"  # Exposed for local development
+    environment:
+      # NATS connection defaults
+      - NUI_NATS_URL=nats://nats:4222
+      - NUI_NATS_NAME=EchoMind NATS
+      # Server configuration
+      - NUI_SERVER_PORT=31311
+      - NUI_SERVER_HOST=0.0.0.0
+      # Authentication disabled (handled by Traefik ForwardAuth)
+      - NUI_SERVER_AUTH_ENABLED=false
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+    depends_on:
+      nats:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nui.rule=Host(`${NATS_DOMAIN}`)"
+      - "traefik.http.routers.nui.entrypoints=web"
+      - "traefik.http.services.nui.loadbalancer.server.port=31311"
+
+  # ===============================================
+  # Redis - Shared Cache & Queue
+  # ===============================================
+  redis:
+    image: redis:7-alpine
+    container_name: echomind-redis
+    hostname: redis
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy noeviction
+      --save ""
+      --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"
+
+  # ===============================================
   # EchoMind API - FastAPI Application
   # ===============================================
   api:
@@ -272,6 +356,11 @@ services:
       - API_AUTH_ISSUER=${API_AUTH_ISSUER}
       - API_AUTH_AUDIENCE=${API_AUTH_AUDIENCE}
       - API_AUTH_JWKS_URL=${API_AUTH_JWKS_URL}
+      # Langfuse (optional - empty = disabled)
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_BASE_URL=http://langfuse-web:3000
+      - API_RAGAS_SAMPLE_RATE=${RAGAS_SAMPLE_RATE:-0.1}
     depends_on:
       postgres:
         condition: service_healthy
@@ -317,6 +406,7 @@ services:
       - ${CONFIG_PATH}/migration/migration.env
     environment:
       - MIGRATION_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${API_DB_NAME}
+      - ENABLE_LANGFUSE=${ENABLE_LANGFUSE:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -334,6 +424,8 @@ services:
     build:
       context: ../../src
       dockerfile: embedder/Dockerfile
+      args:
+        - HF_TOKEN=${HF_TOKEN:-}
     container_name: echomind-embedder
     hostname: embedder
     ports:
@@ -404,6 +496,10 @@ services:
       - CONNECTOR_MINIO_ENDPOINT=minio:9000
       - CONNECTOR_MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - CONNECTOR_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      # Langfuse (optional - empty = disabled)
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_BASE_URL=http://langfuse-web:3000
     depends_on:
       postgres:
         condition: service_healthy
@@ -429,6 +525,8 @@ services:
     build:
       context: ../../src
       dockerfile: ingestor/Dockerfile
+      args:
+        - HF_TOKEN=${HF_TOKEN:-}
     container_name: echomind-ingestor
     hostname: ingestor
     env_file:
@@ -443,6 +541,10 @@ services:
       - INGESTOR_QDRANT_PORT=6333
       - INGESTOR_EMBEDDER_HOST=embedder
       - INGESTOR_EMBEDDER_PORT=50051
+      # Langfuse (optional - empty = disabled)
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_BASE_URL=http://langfuse-web:3000
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
       interval: 30s

@@ -1,0 +1,6 @@
+# Testing dependencies for EchoMind
+pytest==8.0.0
+pytest-asyncio==0.23.5
+pytest-cov==4.1.0
+httpx==0.28.1
+exceptiongroup==1.2.0  # Required by pytest for Python < 3.11

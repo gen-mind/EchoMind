@@ -62,7 +62,17 @@ ENV PYTHONPATH=/app/src
 # Pre-download the default model during build (required for fast startup)
 # NVIDIA embedding model: 1B params, 2048 dim, ~2-4GB VRAM (BF16)
 # Note: trust_remote_code=True is required for NVIDIA models
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('nvidia/llama-nemotron-embed-1b-v2', trust_remote_code=True)"
+# Note: nvidia/llama-nemotron-embed-1b-v2 is publicly available (not gated)
+ARG HF_TOKEN=""
+RUN if [ -n "$HF_TOKEN" ]; then \
+        echo "🔑 Using provided HF_TOKEN for authentication"; \
+        pip install --no-cache-dir huggingface_hub && \
+        python -c "from huggingface_hub import login; login(token='$HF_TOKEN')"; \
+    else \
+        echo "ℹ️  No HF_TOKEN provided - downloading publicly available model"; \
+    fi && \
+    echo "📥 Pre-downloading model: nvidia/llama-nemotron-embed-1b-v2" && \
+    python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('nvidia/llama-nemotron-embed-1b-v2', trust_remote_code=True)"
 
 # Set offline mode AFTER download to prevent runtime network calls
 ENV HF_HUB_OFFLINE=1

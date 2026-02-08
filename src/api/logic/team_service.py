@@ -4,8 +4,7 @@ Team business logic service.
 Handles all team-related business operations, keeping routes thin.
 Supports RBAC where:
 - echomind-allowed: Can view teams they belong to
-- echomind-admins: Can create/edit teams, manage members
-- echomind-superadmins: Full access to all teams
+- echomind-admins: Full access to all teams
 """
 
 from datetime import datetime, timezone
@@ -31,7 +30,6 @@ from echomind_lib.models.public import (
 # RBAC role names
 ROLE_ALLOWED = "echomind-allowed"
 ROLE_ADMIN = "echomind-admins"
-ROLE_SUPERADMIN = "echomind-superadmins"
 
 
 def _role_str_to_enum(role: str) -> TeamMemberRole:
@@ -129,21 +127,9 @@ class TeamService:
             user_roles: List of user's roles.
 
         Returns:
-            True if user is admin or superadmin.
+            True if user is admin.
         """
-        return ROLE_ADMIN in user_roles or ROLE_SUPERADMIN in user_roles
-
-    def _is_superadmin(self, user_roles: list[str]) -> bool:
-        """
-        Check if user has superadmin privileges.
-
-        Args:
-            user_roles: List of user's roles.
-
-        Returns:
-            True if user is superadmin.
-        """
-        return ROLE_SUPERADMIN in user_roles
+        return ROLE_ADMIN in user_roles
 
     async def _check_team_access(
         self,
@@ -173,11 +159,7 @@ class TeamService:
         if not team or team.deleted_date:
             raise NotFoundError("Team", team_id)
 
-        # Superadmins have full access
-        if self._is_superadmin(user_roles):
-            return team
-
-        # Admins can access any team
+        # Admins have full access
         if self._is_admin(user_roles):
             if require_lead:
                 # Admins need to be lead to modify
@@ -209,7 +191,7 @@ class TeamService:
         """
         List teams accessible to the user.
 
-        Admins/superadmins see all teams, regular users see their teams only.
+        Admins see all teams, regular users see their teams only.
 
         Args:
             user_id: Requesting user's ID.
@@ -319,7 +301,7 @@ class TeamService:
         """
         Create a new team.
 
-        Only admins and superadmins can create teams.
+        Only admins can create teams.
 
         Args:
             name: Team name (unique).
@@ -432,7 +414,7 @@ class TeamService:
         """
         Soft delete a team.
 
-        Only superadmins or the team leader can delete teams.
+        Only admins or the team leader can delete teams.
 
         Args:
             team_id: Team ID to delete.

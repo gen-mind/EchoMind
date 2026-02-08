@@ -16,6 +16,7 @@ from echomind_lib.db.models.base import (
     datetime,
     mapped_column,
     relationship,
+    utcnow,
 )
 
 if TYPE_CHECKING:
@@ -39,7 +40,7 @@ class Assistant(Base):
     is_visible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     display_priority: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
-    creation_date: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    creation_date: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, default=utcnow)
     last_update: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     user_id_last_update: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
     deleted_date: Mapped[datetime | None] = mapped_column(TIMESTAMP)

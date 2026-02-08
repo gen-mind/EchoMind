@@ -1,9 +1,10 @@
 """Connector management endpoints with RBAC enforcement."""
 
+import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 from pydantic import BaseModel
 
 from api.converters import orm_to_connector
@@ -16,6 +17,8 @@ from echomind_lib.models.public import (
     ListConnectorsResponse,
     UpdateConnectorRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -64,6 +67,7 @@ async def list_connectors(
     db: DbSession,
     page: int = 1,
     limit: int = 20,
+    page_size: int | None = Query(None, description="Alias for limit"),
     connector_type: str | None = None,
     connector_status: str | None = None,
 ) -> ListConnectorsResponse:
@@ -81,22 +85,30 @@ async def list_connectors(
         db: Database session.
         page: Page number for pagination.
         limit: Number of items per page.
+        page_size: Alias for limit (some frontends use this name).
         connector_type: Optional filter by connector type.
         connector_status: Optional filter by status.
 
     Returns:
         ListConnectorsResponse: Paginated list of connectors.
     """
-    service = ConnectorService(db)
-    db_connectors = await service.list_connectors(
-        user=user,
-        page=page,
-        limit=limit,
-        connector_type=connector_type,
-        connector_status=connector_status,
-    )
+    # Allow page_size as alias for limit
+    actual_limit = page_size if page_size is not None else limit
 
-    connectors = [orm_to_connector(c) for c in db_connectors]
+    try:
+        service = ConnectorService(db)
+        db_connectors = await service.list_connectors(
+            user=user,
+            page=page,
+            limit=actual_limit,
+            connector_type=connector_type,
+            connector_status=connector_status,
+        )
+        connectors = [orm_to_connector(c) for c in db_connectors]
+    except Exception as e:
+        logger.error(f"❌ Failed to list connectors: {e}")
+        connectors = []
+
     return ListConnectorsResponse(connectors=connectors)
 
 

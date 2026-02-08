@@ -17,10 +17,12 @@ from echomind_lib.db.models.base import (
     datetime,
     mapped_column,
     relationship,
+    utcnow,
 )
 
 if TYPE_CHECKING:
     from echomind_lib.db.models.document import Document
+    from echomind_lib.db.models.google_credential import GoogleCredential
     from echomind_lib.db.models.team import Team
     from echomind_lib.db.models.user import User
 
@@ -44,11 +46,15 @@ class Connector(Base):
     status_message: Mapped[str | None] = mapped_column(Text)
     last_sync_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     docs_analyzed: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    creation_date: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    creation_date: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, default=utcnow)
     last_update: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     user_id_last_update: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
     deleted_date: Mapped[datetime | None] = mapped_column(TIMESTAMP)
-    
+    google_credential_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("google_credentials.id", ondelete="SET NULL")
+    )
+
     user: Mapped["User"] = relationship(back_populates="connectors", foreign_keys=[user_id])
     team: Mapped["Team | None"] = relationship(back_populates="connectors", foreign_keys=[team_id])
     documents: Mapped[list["Document"]] = relationship(back_populates="connector")
+    google_credential: Mapped["GoogleCredential | None"] = relationship()

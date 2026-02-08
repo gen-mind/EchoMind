@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package echomind.internal;
+
+option go_package = "echomind/proto/internal";
+
+// Request to generate TensorBoard visualization (sent by API, consumed by Projector worker)
+message ProjectorGenerateRequest {
+  string viz_id = 1;                // Unique visualization ID
+  string collection_name = 2;       // Qdrant collection name (user_X, team_X, org_X)
+  optional string search_query = 3; // Optional search filter
+  int32 limit = 4;                  // Max vectors to visualize (default 10000)
+  optional int32 team_id = 5;       // Team ID (for logging/tracking)
+  optional int32 org_id = 6;        // Org ID (for logging/tracking)
+}

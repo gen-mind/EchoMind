@@ -14,7 +14,9 @@ The API Service is the **gateway** for all client interactions. It handles:
 - WebSocket connections for real-time chat streaming
 - JWT token validation (Authentik OIDC)
 - Request routing to backend services
-- Serving the React web client (static files)
+- Prometheus metrics endpoint (`/metrics`)
+- RAGAS batch evaluation with Langfuse integration
+- Serving the web client (static files)
 
 ---
 
@@ -97,6 +99,9 @@ sequenceDiagram
 | Auth | python-jose (JWT), httpx (OIDC) |
 | Database | SQLAlchemy async |
 | gRPC Client | grpcio-tools |
+| Metrics | prometheus_client |
+| LLM Observability | Langfuse SDK |
+| RAG Evaluation | RAGAS + LangChain |
 | Static Files | FastAPI StaticFiles |
 
 ---
@@ -180,6 +185,60 @@ If NATS is unavailable:
 
 ---
 
+## Prometheus Metrics
+
+The API exposes a `/metrics` endpoint in Prometheus text format, scraped every 10s by the Prometheus instance.
+
+### RAGAS Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `ragas_faithfulness_score` | Histogram | Score distribution for response grounding in context (0-1) |
+| `ragas_response_relevancy_score` | Histogram | Score distribution for response relevance to query (0-1) |
+| `ragas_context_precision_score` | Histogram | Score distribution for context chunk relevance (0-1) |
+| `ragas_evaluations_total` | Counter | Total evaluations by status (`success`, `error`, `skipped`) |
+| `ragas_evaluation_duration_seconds` | Histogram | Evaluation latency |
+
+These metrics feed the **RAGAS Evaluation** Grafana dashboard (`config/observability/grafana/dashboards/ragas-evaluation.json`).
+
+---
+
+## RAGAS Evaluation
+
+RAGAS (Retrieval Augmented Generation Assessment) evaluates RAG quality using three reference-free metrics:
+
+| Metric | What It Measures |
+|--------|-----------------|
+| **Faithfulness** | Is the response grounded in retrieved context? |
+| **Response Relevancy** | Is the response relevant to the user's query? |
+| **Context Precision** | Are the retrieved chunks relevant to the query? |
+
+### Online Evaluation (Sampled)
+
+During chat, a configurable fraction of requests (`API_RAGAS_SAMPLE_RATE`, default 10%) are evaluated automatically. Scores are pushed to Langfuse traces and Prometheus histograms.
+
+### Batch Evaluation
+
+Admin-only endpoint `POST /api/v1/evaluate/batch` evaluates recent chat sessions:
+
+```json
+// Request
+{ "limit": 50, "min_messages": 2 }
+
+// Response
+{ "evaluated": 42, "skipped": 6, "errors": 2 }
+```
+
+### Langfuse Integration
+
+When `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set, the API pushes:
+- **Traces** for each chat interaction (query, response, context, latency)
+- **Scores** for each RAGAS metric attached to the trace
+
+See [Langfuse Setup](../langfuse-setup.md) for configuration.
+
+---
+
 ## Service Structure
 
 ```
@@ -192,17 +251,20 @@ src/api/
 │   ├── assistants.py
 │   ├── llms.py
 │   ├── embedding_models.py
+│   ├── evaluation.py       # RAGAS batch evaluation endpoint
 │   └── chat.py
 ├── websocket/
-│   ├── handler.py          # WS connection manager
+│   ├── chat_handler.py     # WS connection manager + Langfuse tracing
 │   └── protocol.py         # Message types
 ├── middleware/
 │   ├── auth.py             # JWT validation
 │   ├── error_handler.py    # Exception → HTTP response
+│   ├── metrics.py          # Prometheus metrics + /metrics endpoint
 │   └── cors.py
 ├── logic/
 │   ├── user_service.py
 │   ├── connector_service.py
+│   ├── ragas_evaluator.py  # RAGAS metrics + Langfuse scoring
 │   └── ...
 └── config.py
 ```
@@ -251,6 +313,8 @@ See [API Specification](../api-spec.md) for full details.
 | LLMs | CRUD + `POST /{id}/test` |
 | Embedding Models | `GET`, `POST`, `PUT /{id}/activate` |
 | Chat | Sessions CRUD, Messages read |
+| Evaluation | `POST /evaluate/batch` (admin, RAGAS batch eval) |
+| Metrics | `GET /metrics` (Prometheus format) |
 | WebSocket | `WS /ws/chat` |
 
 ---
@@ -277,12 +341,19 @@ All service logic MUST have unit tests. See [Testing Standards](../../.claude/ru
 ### Test Location
 
 ```
-tests/unit/api/logic/
-├── test_connector_service.py  # 19 tests - NATS publishing, CRUD
-├── test_user_service.py
-├── test_assistant_service.py
-├── test_chat_service.py
-└── ...
+tests/unit/api/
+├── logic/
+│   ├── test_connector_service.py   # NATS publishing, CRUD
+│   ├── test_ragas_evaluator.py     # Sample rate, metrics, scoring
+│   ├── test_user_service.py
+│   ├── test_assistant_service.py
+│   └── ...
+├── middleware/
+│   └── test_metrics.py             # Prometheus endpoint, metric instruments
+├── routes/
+│   └── test_evaluation.py          # Batch eval endpoint
+└── websocket/
+    └── test_chat_handler_langfuse.py  # Langfuse trace integration
 ```
 
 ### What to Test
@@ -292,6 +363,9 @@ tests/unit/api/logic/
 | Service classes | All public methods |
 | Exception handling | NotFoundError, ValidationError, etc. |
 | Business logic | Validation, transformations |
+| RAGAS evaluator | Sample rate, metric instrumentation, score pushing |
+| Metrics endpoint | Prometheus format, metric definitions |
+| Batch evaluation | Session filtering, error handling |
 
 ### Example
 
@@ -326,3 +400,4 @@ class TestUserService:
 - [API Specification](../api-spec.md) - Full endpoint documentation
 - [Architecture](../architecture.md) - System overview
 - [Proto Definitions](../proto-definitions.md) - Message schemas
+- [Langfuse Setup](../langfuse-setup.md) - LLM observability and RAGAS evaluation

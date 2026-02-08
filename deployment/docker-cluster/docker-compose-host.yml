@@ -45,6 +45,13 @@ volumes:
       o: bind
       device: ${DATA_PATH}/portainer
 
+  tensorboard_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH}/tensorboard
+
 services:
   # ===============================================
   # Traefik - Reverse Proxy (ONLY PUBLIC PORTS)
@@ -63,6 +70,7 @@ services:
     volumes:
       - ${DATA_PATH}/traefik/certificates:/letsencrypt
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${CONFIG_PATH}/traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--ping"]
       interval: 10s
@@ -76,9 +84,13 @@ services:
       - "--ping=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--log.level=INFO"
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.entrypoint=traefik"
       # SSL - Let's Encrypt ACME
       - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
@@ -88,13 +100,6 @@ services:
       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
     labels:
       - "traefik.enable=true"
-      # =============================================
-      # Forward Auth Middleware (Authentik Outpost)
-      # Used to protect admin dashboards (Qdrant, MinIO)
-      # =============================================
-      - "traefik.http.middlewares.authentik-forward-auth.forwardAuth.address=http://authentik-server:9000/outpost.goauthentik.io/auth/traefik"
-      - "traefik.http.middlewares.authentik-forward-auth.forwardAuth.trustForwardHeader=true"
-      - "traefik.http.middlewares.authentik-forward-auth.forwardAuth.authResponseHeaders=X-authentik-username,X-authentik-groups,X-authentik-email,X-authentik-uid,X-authentik-jwt"
 
   # ===============================================
   # PostgreSQL - Shared DB (Authentik + API)
@@ -125,6 +130,32 @@ services:
       - "127.0.0.1:5432:5432"
     labels:
       - "traefik.enable=false"
+
+  # ===============================================
+  # Adminer - PostgreSQL Web UI (Protected by Authentik)
+  # ===============================================
+  adminer:
+    image: adminer:4.8.1-standalone
+    container_name: echomind-adminer
+    hostname: adminer
+    environment:
+      - ADMINER_DEFAULT_SERVER=postgres
+      - ADMINER_DESIGN=pepa-linha-dark
+      - ADMINER_PLUGINS=tables-filter tinymce
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.adminer.rule=Host(`${POSTGRES_DOMAIN}`)"
+      - "traefik.http.routers.adminer.entrypoints=websecure"
+      - "traefik.http.routers.adminer.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.adminer.middlewares=authentik-forward-auth@file"
+      - "traefik.http.services.adminer.loadbalancer.server.port=8080"
 
   # ===============================================
   # Authentik Server - OIDC Provider
@@ -218,7 +249,7 @@ services:
       - "traefik.http.routers.qdrant.rule=Host(`${QDRANT_DOMAIN}`)"
       - "traefik.http.routers.qdrant.entrypoints=websecure"
       - "traefik.http.routers.qdrant.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.qdrant.middlewares=authentik-forward-auth"
+      - "traefik.http.routers.qdrant.middlewares=authentik-forward-auth@file"
       - "traefik.http.services.qdrant.loadbalancer.server.port=6333"
 
   # ===============================================
@@ -232,6 +263,7 @@ services:
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - MINIO_PROMETHEUS_AUTH_TYPE=public
     # NO ports - internal only, console exposed via Traefik
     volumes:
       - minio_data:/data
@@ -250,7 +282,7 @@ services:
       - "traefik.http.routers.minio-console.rule=Host(`${MINIO_DOMAIN}`)"
       - "traefik.http.routers.minio-console.entrypoints=websecure"
       - "traefik.http.routers.minio-console.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.minio-console.middlewares=authentik-forward-auth"
+      - "traefik.http.routers.minio-console.middlewares=authentik-forward-auth@file"
       - "traefik.http.routers.minio-console.service=minio-console"
       - "traefik.http.services.minio-console.loadbalancer.server.port=9001"
       # MinIO API (for S3-compatible access)
@@ -286,6 +318,61 @@ services:
       - "traefik.enable=false"
 
   # ===============================================
+  # Nui - NATS Management UI (Protected by Authentik)
+  # ===============================================
+  nui:
+    image: ghcr.io/nats-nui/nui:latest
+    container_name: echomind-nui
+    hostname: nui
+    environment:
+      # NATS connection defaults
+      - NUI_NATS_URL=nats://nats:4222
+      - NUI_NATS_NAME=EchoMind NATS
+      # Server configuration
+      - NUI_SERVER_PORT=31311
+      - NUI_SERVER_HOST=0.0.0.0
+      # Authentication disabled (handled by Traefik ForwardAuth)
+      - NUI_SERVER_AUTH_ENABLED=false
+    restart: unless-stopped
+    networks:
+      - backend
+      - frontend
+    depends_on:
+      nats:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nui.rule=Host(`${NATS_DOMAIN}`)"
+      - "traefik.http.routers.nui.entrypoints=websecure"
+      - "traefik.http.routers.nui.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.nui.middlewares=authentik-forward-auth@file"
+      - "traefik.http.services.nui.loadbalancer.server.port=31311"
+
+  # ===============================================
+  # Redis - Shared Cache & Queue
+  # ===============================================
+  redis:
+    image: redis:7-alpine
+    container_name: echomind-redis
+    hostname: redis
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy noeviction
+      --save ""
+      --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"
+
+  # ===============================================
   # EchoMind API - FastAPI Application
   # ===============================================
   api:
@@ -304,11 +391,29 @@ services:
       - API_MINIO_ENDPOINT=minio:9000
       - API_MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - API_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - API_MINIO_PUBLIC_ENDPOINT=https://${S3_DOMAIN}
       - API_NATS_URL=nats://nats:4222
       # Auth - issuer must match JWT's 'iss' claim exactly (external URL)
       - API_AUTH_ISSUER=${API_AUTH_ISSUER}
       - API_AUTH_AUDIENCE=${API_AUTH_AUDIENCE}
       - API_AUTH_JWKS_URL=${API_AUTH_JWKS_URL}
+      # OAuth/OIDC for WebUI SSO login (reuses existing WEB_OIDC_* vars)
+      # Authentik uses global OAuth2 endpoints (not per-application)
+      - API_OAUTH_CLIENT_ID=${WEB_OIDC_CLIENT_ID}
+      - API_OAUTH_CLIENT_SECRET=${WEB_OIDC_CLIENT_SECRET}
+      - API_OAUTH_PROVIDER_NAME=Authentik
+      - API_OAUTH_AUTHORIZE_URL=${AUTHENTIK_URL}/application/o/authorize/
+      - API_OAUTH_TOKEN_URL=${AUTHENTIK_URL}/application/o/token/
+      - API_OAUTH_USERINFO_URL=${AUTHENTIK_URL}/application/o/userinfo/
+      - API_OAUTH_REDIRECT_URI=https://${DOMAIN}/oauth/oidc/callback
+      - API_OAUTH_SCOPE=${WEB_OIDC_SCOPE:-openid profile email}
+      - API_OAUTH_FRONTEND_URL=https://${DOMAIN}
+      - API_OAUTH_COOKIE_DOMAIN=.${DOMAIN}
+      # Langfuse (optional - empty = disabled)
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_BASE_URL=http://langfuse-web:3000
+      - API_RAGAS_SAMPLE_RATE=${RAGAS_SAMPLE_RATE:-0.1}
     depends_on:
       postgres:
         condition: service_healthy
@@ -340,6 +445,20 @@ services:
       - "traefik.http.middlewares.api-cors.headers.accesscontrolallowcredentials=true"
       - "traefik.http.middlewares.api-cors.headers.accesscontrolmaxage=100"
       - "traefik.http.middlewares.api-cors.headers.addvaryheader=true"
+      # =============================================
+      # Path-based routing for WebUI domain
+      # Routes /api/* and /oauth/* from main domain to API backend
+      # This allows the SvelteKit frontend to call /api/* and /oauth/*
+      # on same origin, with Traefik forwarding to EchoMind API
+      # Includes both /api/v1/* (EchoMind endpoints) and
+      # /api/* (Open WebUI compatibility endpoints)
+      # =============================================
+      - "traefik.http.routers.api-webui.rule=Host(`${DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/oauth`) || PathPrefix(`/ws`))"
+      - "traefik.http.routers.api-webui.entrypoints=websecure"
+      - "traefik.http.routers.api-webui.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.api-webui.middlewares=api-cors"
+      - "traefik.http.routers.api-webui.service=api"
+      - "traefik.http.routers.api-webui.priority=100"
 
   # ===============================================
   # EchoMind Migration - Database Migrations
@@ -355,6 +474,7 @@ services:
       - ${CONFIG_PATH}/migration/migration.env
     environment:
       - MIGRATION_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${API_DB_NAME}
+      - ENABLE_LANGFUSE=${ENABLE_LANGFUSE:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -372,6 +492,8 @@ services:
     build:
       context: ../../src
       dockerfile: embedder/Dockerfile
+      args:
+        - HF_TOKEN=${HF_TOKEN:-}
     container_name: echomind-embedder
     hostname: embedder
     # NO ports - internal only (gRPC accessed by other services)
@@ -441,6 +563,10 @@ services:
       - CONNECTOR_MINIO_ENDPOINT=minio:9000
       - CONNECTOR_MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - CONNECTOR_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      # Langfuse (optional - empty = disabled)
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_BASE_URL=http://langfuse-web:3000
     depends_on:
       postgres:
         condition: service_healthy
@@ -466,6 +592,8 @@ services:
     build:
       context: ../../src
       dockerfile: ingestor/Dockerfile
+      args:
+        - HF_TOKEN=${HF_TOKEN:-}
     container_name: echomind-ingestor
     hostname: ingestor
     env_file:
@@ -480,6 +608,10 @@ services:
       - INGESTOR_QDRANT_PORT=6333
       - INGESTOR_EMBEDDER_HOST=embedder
       - INGESTOR_EMBEDDER_PORT=50051
+      # Langfuse (optional - empty = disabled)
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_BASE_URL=http://langfuse-web:3000
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
       interval: 30s
@@ -565,57 +697,105 @@ services:
       - "traefik.http.services.portainer.loadbalancer.server.port=9000"
 
   # ===============================================
-  # EchoMind WebUI - SvelteKit Frontend (Open WebUI Fork)
+  # TensorBoard - Official TensorFlow Container
   # ===============================================
-  # This is the new frontend based on Open WebUI with EchoMind extensions.
-  # It connects to the EchoMind FastAPI backend via WEBUI_BASE_URL.
+  tensorboard:
+    image: tensorflow/tensorflow:2.18.0
+    container_name: echomind-tensorboard
+    hostname: tensorboard
+    command: tensorboard --logdir /logs --host 0.0.0.0 --port 6006
+    volumes:
+      - tensorboard_logs:/logs:ro  # Read-only access
+    restart: unless-stopped
+    networks:
+      - frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tensorboard.rule=Host(`${TENSORBOARD_DOMAIN}`)"
+      - "traefik.http.routers.tensorboard.entrypoints=websecure"
+      - "traefik.http.routers.tensorboard.tls.certresolver=letsencrypt"
+      - "traefik.http.services.tensorboard.loadbalancer.server.port=6006"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6006/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ===============================================
+  # Projector Worker - TensorBoard Viz Generator
+  # ===============================================
+  projector:
+    image: gsantopaolo/echomind-projector:${PROJECTOR_VERSION:-latest}
+    build:
+      context: ../../src
+      dockerfile: projector/Dockerfile
+    container_name: echomind-projector
+    hostname: projector
+    env_file:
+      - ${CONFIG_PATH}/projector/projector.env
+    environment:
+      - PROJECTOR_LOG_LEVEL=${PROJECTOR_LOG_LEVEL:-INFO}
+      - PROJECTOR_NATS_URL=nats://nats:4222
+      - PROJECTOR_STREAM_NAME=projector-stream
+      - PROJECTOR_CONSUMER_NAME=projector-worker
+      - PROJECTOR_SUBJECT=projector.generate
+      - PROJECTOR_QDRANT_URL=http://qdrant:6333
+      - PROJECTOR_QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - PROJECTOR_LOG_DIR=/logs
+      - TENSORBOARD_DOMAIN=${TENSORBOARD_DOMAIN}
+    volumes:
+      - tensorboard_logs:/logs  # Write access
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - backend
+
+  # ===============================================
+  # EchoMind WebUI - Static SvelteKit Frontend (Nginx)
+  # ===============================================
+  # Lightweight nginx container serving static SvelteKit SPA (~5MB).
+  # All API calls are routed to EchoMind API via Traefik path-based routing.
+  # No Python backend needed - just static files.
   webui:
     image: gsantopaolo/echomind-webui:${WEBUI_VERSION:-0.1.0-beta.1}
     build:
       context: ../../../echomind-webui
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.nginx
       args:
         - BUILD_HASH=${BUILD_HASH:-dev}
-        - USE_SLIM=true
     container_name: echomind-webui
     hostname: webui
-    environment:
-      # Open WebUI connects to EchoMind API backend
-      - WEBUI_URL=${WEBUI_URL:-https://${DOMAIN}}
-      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
-      # Disable Open WebUI's default auth - use EchoMind's Authentik OIDC
-      - ENABLE_OAUTH_SIGNUP=true
-      - OAUTH_PROVIDER_NAME=Authentik
-      - OPENID_PROVIDER_URL=${OIDC_AUTHORITY}
-      - OAUTH_CLIENT_ID=${OIDC_CLIENT_ID}
-      - OAUTH_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
-      - OAUTH_SCOPES=openid profile email
-      # EchoMind API integration
-      - ECHOMIND_API_URL=http://api:8000
-      # Disable features handled by EchoMind backend
-      - ENABLE_RAG_WEB_LOADER_SSL_VERIFICATION=false
-      - ENABLE_RAG_LOCAL_WEB_FETCH=false
+    # No environment variables needed - static files only
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
       interval: 30s
-      timeout: 10s
-      start_period: 60s
-      retries: 5
-    depends_on:
-      api:
-        condition: service_started
-      authentik-server:
-        condition: service_started
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     restart: unless-stopped
     networks:
       - frontend
-      - backend
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.webui.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.webui.entrypoints=websecure"
       - "traefik.http.routers.webui.tls.certresolver=letsencrypt"
-      - "traefik.http.services.webui.loadbalancer.server.port=8080"
+      - "traefik.http.services.webui.loadbalancer.server.port=80"
+      # Low priority - API routes (priority=100) take precedence
+      - "traefik.http.routers.webui.priority=1"
 
   # ===============================================
   # [DEPRECATED] EchoMind Web - React Frontend

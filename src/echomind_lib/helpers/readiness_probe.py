@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from http.server import HTTPServer
 from typing import Any, Callable, Coroutine
@@ -39,7 +39,7 @@ class HealthReport:
     
     status: HealthStatus
     checks: list[HealthCheckResult]
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON response."""

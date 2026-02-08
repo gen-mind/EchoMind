@@ -10,6 +10,7 @@ from ingestor.logic.ingestor_service import IngestorService
 from ingestor.logic.exceptions import (
     DatabaseError,
     DocumentNotFoundError,
+    EmbeddingError,
     FileNotFoundInStorageError,
     MinioError,
     OwnershipMismatchError,
@@ -468,6 +469,32 @@ class TestIngestorService:
             assert payload["content_type"] == "text"
             assert "text" in payload  # Truncated text for preview
 
+    @pytest.mark.asyncio
+    async def test_embed_and_store_raises_on_vector_count_mismatch(self) -> None:
+        """Test _embed_and_store raises EmbeddingError when vector count != text count.
+
+        If the embedder returns fewer vectors than texts (e.g., partial failure),
+        continuing would corrupt Qdrant with misaligned vectors/payloads.
+        """
+        with patch.object(
+            self.service._embedder,
+            "embed_batch",
+            return_value=[[0.1]],  # Only 1 vector for 3 texts
+        ):
+            with pytest.raises(EmbeddingError) as exc_info:
+                await self.service._embed_and_store(
+                    texts=["chunk1", "chunk2", "chunk3"],
+                    document_id=99,
+                    collection_name="test",
+                    chunking_session="session",
+                )
+
+            assert "mismatch" in exc_info.value.message.lower()
+            assert exc_info.value.document_id == 99
+
+            # Verify Qdrant was NOT called (data integrity protection)
+            self.mock_qdrant.upsert.assert_not_called()
+
     # ==========================================
     # Delete vectors tests
     # ==========================================
@@ -717,7 +744,9 @@ class TestIngestorService:
 
     @pytest.mark.asyncio
     async def test_process_document_empty_content(self) -> None:
-        """Test process_document handles empty extraction."""
+        """Test process_document raises exception when extraction produces no content."""
+        from ingestor.logic.exceptions import NoExtractableContentError
+
         # Mock document lookup with connector for ownership verification
         mock_document = self._create_mock_document(
             connector_id=1, user_id=1, content_type="text/plain"
@@ -729,23 +758,26 @@ class TestIngestorService:
         # Mock file download
         self.mock_minio.download_file.return_value = b""
 
-        # Mock processing - returns empty
+        # Mock processing - returns empty (no chunks, no structured images)
         with patch.object(
             self.service._processor,
             "process",
             return_value=([], []),
         ):
-            result = await self.service.process_document(
-                document_id=1,
-                connector_id=1,
-                user_id=1,
-                minio_path="empty.txt",
-                chunking_session="session",
-                scope="user",
-            )
+            # Should raise NoExtractableContentError instead of returning success
+            with pytest.raises(NoExtractableContentError) as exc_info:
+                await self.service.process_document(
+                    document_id=1,
+                    connector_id=1,
+                    user_id=1,
+                    minio_path="empty.txt",
+                    chunking_session="session",
+                    scope="user",
+                )
 
-            assert result["chunk_count"] == 0
-            assert result["collection_name"] is None
+            # Verify exception details
+            assert exc_info.value.document_id == 1
+            assert "No extractable content" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_process_document_updates_status_on_error(self) -> None:
@@ -916,3 +948,79 @@ class TestIngestorService:
             await self.service.close()
 
             mock_close.assert_called_once()
+
+    # ==========================================
+    # Empty content handling tests
+    # ==========================================
+
+    @pytest.mark.asyncio
+    async def test_process_document_raises_on_empty_content(self) -> None:
+        """Test process_document raises NoExtractableContentError when no chunks extracted."""
+        from ingestor.logic.exceptions import NoExtractableContentError
+
+        # Mock document
+        mock_document = MagicMock()
+        mock_document.id = 1
+        mock_document.connector_id = 1
+        mock_document.connector.user_id = 42
+        mock_document.content_type = "application/pdf"
+
+        with patch.object(
+            self.service, "_get_document", return_value=mock_document
+        ), patch.object(
+            self.service, "_download_file", return_value=b"fake file bytes"
+        ), patch.object(
+            self.service._processor, "process", return_value=([], [])  # No chunks!
+        ), patch.object(
+            self.service, "_update_status"
+        ) as mock_update:
+            with pytest.raises(NoExtractableContentError) as exc_info:
+                await self.service.process_document(
+                    document_id=1,
+                    connector_id=1,
+                    user_id=42,
+                    minio_path="empty.pdf",
+                    chunking_session="session",
+                    scope="user",
+                )
+
+            # Should raise with document ID and MIME type
+            assert exc_info.value.document_id == 1
+            assert exc_info.value.mime_type == "application/pdf"
+            assert "No extractable content" in str(exc_info.value)
+
+            # Should have updated status to "error" via exception handling
+            # (The exception is caught by the outer try/except in process_document)
+
+    @pytest.mark.asyncio
+    async def test_process_document_empty_chunks_updates_error_status(self) -> None:
+        """Test that empty content results in error status via exception path."""
+        from ingestor.logic.exceptions import NoExtractableContentError
+
+        mock_document = MagicMock()
+        mock_document.id = 1
+        mock_document.connector_id = 1
+        mock_document.connector.user_id = 42
+        mock_document.content_type = "text/plain"
+
+        with patch.object(
+            self.service, "_get_document", return_value=mock_document
+        ), patch.object(
+            self.service, "_download_file", return_value=b""
+        ), patch.object(
+            self.service._processor, "process", return_value=([], [])
+        ), patch.object(
+            self.service, "_update_status"
+        ) as mock_update:
+            with pytest.raises(NoExtractableContentError):
+                await self.service.process_document(
+                    document_id=1,
+                    connector_id=1,
+                    user_id=42,
+                    minio_path="empty.txt",
+                    chunking_session="session",
+                    scope="user",
+                )
+
+            # Exception should be raised before any success status update
+            # The outer exception handler will call _update_status with "error"

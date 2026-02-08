@@ -5,7 +5,7 @@ Provides mock database sessions, authenticated users, and test clients.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator
 from unittest import mock
 
@@ -87,7 +87,7 @@ class MockAsyncSession:
         if hasattr(obj, "id") and obj.id is None:
             obj.id = 1
         if hasattr(obj, "creation_date") and obj.creation_date is None:
-            obj.creation_date = datetime.utcnow()
+            obj.creation_date = datetime.now(timezone.utc)
 
     async def execute(self, query: Any) -> "MockResult":
         """Return mock query result."""

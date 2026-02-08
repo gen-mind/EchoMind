@@ -811,3 +811,84 @@ class TestUploadServiceIntegration:
 
         assert abort_result is True
         mock_db.delete.assert_called()
+
+
+class TestPresignedUrlPublicEndpoint:
+    """Tests for presigned URL generation with public endpoint."""
+
+    @pytest.fixture
+    def mock_db(self) -> AsyncMock:
+        """Create a mock database session."""
+        return AsyncMock()
+
+    def test_presign_client_created_with_public_endpoint(
+        self, mock_db: AsyncMock,
+    ) -> None:
+        """Test that MinIOClient creates a presign client when public_endpoint is set."""
+        from echomind_lib.db.minio import MinIOClient
+
+        client = MinIOClient(
+            endpoint="minio:9000",
+            access_key="key",
+            secret_key="secret",
+            public_endpoint="https://s3.demo.echomind.ch",
+        )
+
+        assert client._presign_client is not None
+        assert client._presign_client._base_url.is_https
+
+    def test_no_presign_client_without_public_endpoint(
+        self, mock_db: AsyncMock,
+    ) -> None:
+        """Test that no presign client is created when public_endpoint is None."""
+        from echomind_lib.db.minio import MinIOClient
+
+        client = MinIOClient(
+            endpoint="minio:9000",
+            access_key="key",
+            secret_key="secret",
+        )
+
+        assert client._presign_client is None
+
+    def test_presign_client_parses_https(self) -> None:
+        """Test that https:// endpoint creates a secure presign client."""
+        from echomind_lib.db.minio import MinIOClient
+
+        client = MinIOClient(
+            endpoint="minio:9000",
+            access_key="key",
+            secret_key="secret",
+            public_endpoint="https://s3.example.com",
+        )
+
+        assert client._presign_client is not None
+        assert client._presign_client._base_url.is_https
+
+    def test_presign_client_parses_http(self) -> None:
+        """Test that http:// endpoint creates a non-secure presign client."""
+        from echomind_lib.db.minio import MinIOClient
+
+        client = MinIOClient(
+            endpoint="minio:9000",
+            access_key="key",
+            secret_key="secret",
+            public_endpoint="http://s3.local:9000",
+        )
+
+        assert client._presign_client is not None
+        assert not client._presign_client._base_url.is_https
+
+    def test_presign_client_defaults_to_https_without_scheme(self) -> None:
+        """Test that bare hostname defaults to HTTPS."""
+        from echomind_lib.db.minio import MinIOClient
+
+        client = MinIOClient(
+            endpoint="minio:9000",
+            access_key="key",
+            secret_key="secret",
+            public_endpoint="s3.example.com",
+        )
+
+        assert client._presign_client is not None
+        assert client._presign_client._base_url.is_https

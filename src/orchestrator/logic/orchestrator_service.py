@@ -31,6 +31,9 @@ CONNECTOR_SUBJECTS: dict[str, str] = {
     "file": "connector.sync.file",
     "onedrive": "connector.sync.onedrive",
     "google_drive": "connector.sync.google_drive",
+    "gmail": "connector.sync.gmail",
+    "google_calendar": "connector.sync.google_calendar",
+    "google_contacts": "connector.sync.google_contacts",
     "teams": "connector.sync.teams",
 }
 
@@ -40,6 +43,9 @@ CONNECTOR_TYPE_MAP: dict[str, int] = {
     "file": connector_pb2.ConnectorType.CONNECTOR_TYPE_FILE,
     "onedrive": connector_pb2.ConnectorType.CONNECTOR_TYPE_ONEDRIVE,
     "google_drive": connector_pb2.ConnectorType.CONNECTOR_TYPE_GOOGLE_DRIVE,
+    "gmail": connector_pb2.ConnectorType.CONNECTOR_TYPE_GMAIL,
+    "google_calendar": connector_pb2.ConnectorType.CONNECTOR_TYPE_GOOGLE_CALENDAR,
+    "google_contacts": connector_pb2.ConnectorType.CONNECTOR_TYPE_GOOGLE_CONTACTS,
     "teams": connector_pb2.ConnectorType.CONNECTOR_TYPE_TEAMS,
 }
 

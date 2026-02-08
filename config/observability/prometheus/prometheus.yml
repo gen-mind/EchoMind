@@ -1,0 +1,95 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+scrape_configs:
+  # --- Prometheus self-monitoring ---
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # --- Traefik ---
+  - job_name: "traefik"
+    static_configs:
+      - targets: ["traefik:8080"]
+        labels:
+          service: "traefik"
+
+  # --- NATS (via prometheus-nats-exporter, NOT native) ---
+  - job_name: "nats"
+    static_configs:
+      - targets: ["nats-exporter:7777"]
+        labels:
+          service: "nats"
+
+  # --- Qdrant (built-in /metrics) ---
+  - job_name: "qdrant"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["qdrant:6333"]
+        labels:
+          service: "qdrant"
+
+  # --- MinIO (built-in cluster metrics) ---
+  - job_name: "minio"
+    metrics_path: "/minio/v2/metrics/cluster"
+    static_configs:
+      - targets: ["minio:9000"]
+        labels:
+          service: "minio"
+
+  # --- Loki (self-monitoring) ---
+  - job_name: "loki"
+    static_configs:
+      - targets: ["loki:3100"]
+        labels:
+          service: "loki"
+
+  # --- Alloy (self-monitoring) ---
+  - job_name: "alloy"
+    static_configs:
+      - targets: ["alloy:12345"]
+        labels:
+          service: "alloy"
+
+  # --- cAdvisor (container metrics) ---
+  - job_name: "cadvisor"
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["cadvisor:8080"]
+        labels:
+          service: "cadvisor"
+
+  # --- node-exporter (host metrics) ---
+  - job_name: "node-exporter"
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels:
+          service: "node-exporter"
+
+  # --- PostgreSQL (via postgres-exporter) ---
+  - job_name: "postgres"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+        labels:
+          service: "postgres"
+
+  # ============================================
+  # EchoMind Services
+  # ============================================
+  - job_name: "echomind-api"
+    metrics_path: "/metrics"
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["api:8000"]
+        labels:
+          service: "api"
+
+  # - job_name: "echomind-embedder"
+  #   metrics_path: "/metrics"
+  #   scrape_interval: 15s
+  #   static_configs:
+  #     - targets: ["embedder:9091"]
+  #       labels:
+  #         service: "embedder"

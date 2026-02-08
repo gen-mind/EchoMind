@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from echomind_lib.constants import MinioBuckets
 from echomind_lib.db.minio import MinIOClient
 from echomind_lib.db.models import Connector, Document
 from echomind_lib.db.nats_publisher import JetStreamPublisher
@@ -33,7 +34,10 @@ from connector.logic.providers.base import (
     FileMetadata,
     StreamResult,
 )
+from connector.logic.providers.google_calendar import GoogleCalendarProvider
+from connector.logic.providers.google_contacts import GoogleContactsProvider
 from connector.logic.providers.google_drive import GoogleDriveProvider
+from connector.logic.providers.google_gmail import GmailProvider
 from connector.logic.providers.onedrive import OneDriveProvider
 
 logger = logging.getLogger("echomind-connector.service")
@@ -42,6 +46,9 @@ logger = logging.getLogger("echomind-connector.service")
 # Provider registry
 PROVIDERS: dict[str, type[BaseProvider]] = {
     "google_drive": GoogleDriveProvider,
+    "gmail": GmailProvider,
+    "google_calendar": GoogleCalendarProvider,
+    "google_contacts": GoogleContactsProvider,
     "onedrive": OneDriveProvider,
 }
 
@@ -62,7 +69,7 @@ class ConnectorService:
         db_session: AsyncSession,
         minio_client: MinIOClient,
         nats_publisher: JetStreamPublisher,
-        minio_bucket: str = "documents",
+        minio_bucket: str = MinioBuckets.DOCUMENTS,
     ):
         """
         Initialize connector service.

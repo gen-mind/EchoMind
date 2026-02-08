@@ -492,6 +492,14 @@
         "scope_id": "",
         "team_id": ""
     },
+    "ProjectorGenerateRequest": {
+        "viz_id": "",
+        "collection_name": "",
+        "search_query": "",
+        "limit": "",
+        "team_id": "",
+        "org_id": ""
+    },
     "EmbedRequest": {
         "texts": ""
     },

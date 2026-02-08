@@ -2,7 +2,7 @@
 AgentMemory CRUD operations.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Sequence
 
 from sqlalchemy import select, func
@@ -80,7 +80,7 @@ class AgentMemoryCRUD(CRUDBase[AgentMemory]):
         Returns:
             List of active memories.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         query = (
             select(AgentMemory)
             .where(AgentMemory.user_id == user_id)
@@ -159,7 +159,7 @@ class AgentMemoryCRUD(CRUDBase[AgentMemory]):
         memory = await self.get_by_id(session, memory_id)
         if memory:
             memory.access_count += 1
-            memory.last_accessed_at = datetime.utcnow()
+            memory.last_accessed_at = datetime.now(timezone.utc)
             await session.flush()
             return memory
         return None
@@ -184,7 +184,7 @@ class AgentMemoryCRUD(CRUDBase[AgentMemory]):
         memory = await self.get_by_id(session, memory_id)
         if memory:
             memory.importance_score = max(0.0, min(1.0, importance_score))
-            memory.last_update = datetime.utcnow()
+            memory.last_update = datetime.now(timezone.utc)
             await session.flush()
             return memory
         return None
@@ -204,7 +204,7 @@ class AgentMemoryCRUD(CRUDBase[AgentMemory]):
         Returns:
             Number of memories deleted.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         query = (
             select(AgentMemory)
             .where(AgentMemory.expires_at.isnot(None))

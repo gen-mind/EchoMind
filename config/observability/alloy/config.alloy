@@ -1,0 +1,82 @@
+// ============================================
+// Docker Container Log Discovery & Collection
+// ============================================
+
+// 1. Discover all Docker containers
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// 2. Relabel: extract container/service metadata as labels
+discovery.relabel "docker_logs" {
+  targets = []
+
+  // Extract container name (strip leading slash)
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  // Extract compose service name
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  // Extract compose project name
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "project"
+  }
+
+  // Drop containers with logging=false label (opt-out)
+  rule {
+    source_labels = ["__meta_docker_container_label_logging"]
+    regex         = "false"
+    action        = "drop"
+  }
+}
+
+// 3. Collect logs from Docker containers
+loki.source.docker "default" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  labels        = {"platform" = "docker"}
+  relabel_rules = discovery.relabel.docker_logs.rules
+  forward_to    = [loki.process.docker_logs.receiver]
+}
+
+// 4. Process logs: try to parse JSON, extract level
+loki.process "docker_logs" {
+  // Try to parse as JSON (services using JSON formatter)
+  stage.json {
+    expressions = {
+      level   = "levelname",
+      logger  = "name",
+      message = "message",
+    }
+  }
+
+  // Fallback: try to extract level from plain-text format
+  // Format: "2026-02-07 10:30:00 - echomind-api - INFO - message"
+  stage.regex {
+    expression = "^\\S+ \\S+ - (?P<logger>\\S+) - (?P<level>\\w+) - "
+  }
+
+  // Normalize level to lowercase label
+  stage.labels {
+    values = {
+      level  = "",
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+// 5. Send to Loki
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

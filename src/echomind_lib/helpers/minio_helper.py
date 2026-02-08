@@ -9,6 +9,7 @@ import mimetypes
 from pathlib import Path
 from typing import Any, AsyncIterator
 
+from echomind_lib.constants import MinioBuckets
 from echomind_lib.db.minio import get_minio, MinIOClient, StreamUploadResult
 
 
@@ -29,7 +30,7 @@ class MinIOHelper:
     
     def __init__(
         self,
-        bucket: str = "echomind-documents",
+        bucket: str = MinioBuckets.DOCUMENTS,
         client: MinIOClient | None = None,
     ):
         """
@@ -299,7 +300,7 @@ def get_minio_helper() -> MinIOHelper:
     return _minio_helper
 
 
-async def init_minio_helper(bucket: str = "echomind-documents") -> MinIOHelper:
+async def init_minio_helper(bucket: str = MinioBuckets.DOCUMENTS) -> MinIOHelper:
     """Initialize the global MinIO helper."""
     global _minio_helper
     _minio_helper = MinIOHelper(bucket=bucket)

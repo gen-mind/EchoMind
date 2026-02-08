@@ -7,12 +7,12 @@ requires-python = ">=3.11"
 license = { text = "Proprietary" }
 
 dependencies = [
-    "grpcio>=1.60.0",
-    "grpcio-tools>=1.60.0",
+    "grpcio==1.69.0",
+    "grpcio-tools==1.69.0",
     "sentence-transformers>=2.2.0",
     "torch>=2.0.0",
-    "pydantic>=2.0.0",
-    "pydantic-settings>=2.0.0",
+    "pydantic==2.12.5",
+    "pydantic-settings==2.12.0",
 ]
 
 [project.optional-dependencies]

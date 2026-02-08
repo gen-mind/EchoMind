@@ -2,7 +2,7 @@
 User CRUD operations.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Sequence
 
 from sqlalchemy import select
@@ -127,7 +127,7 @@ class UserCRUD(CRUDBase[User]):
         """
         user = await self.get_by_id(session, user_id)
         if user:
-            user.last_login = datetime.utcnow()
+            user.last_login = datetime.now(timezone.utc)
             await session.flush()
             return user
         return None
@@ -169,8 +169,8 @@ class UserCRUD(CRUDBase[User]):
             user.last_name = last_name
             user.roles = roles or []
             user.groups = groups or []
-            user.last_login = datetime.utcnow()
-            user.last_update = datetime.utcnow()
+            user.last_login = datetime.now(timezone.utc)
+            user.last_update = datetime.now(timezone.utc)
             await session.flush()
         else:
             user = User(
@@ -181,7 +181,7 @@ class UserCRUD(CRUDBase[User]):
                 last_name=last_name,
                 roles=roles or [],
                 groups=groups or [],
-                last_login=datetime.utcnow(),
+                last_login=datetime.now(timezone.utc),
             )
             session.add(user)
             await session.flush()

@@ -8,6 +8,19 @@ import pytest
 from ingestor.config import IngestorSettings, get_settings, reset_settings
 
 
+@pytest.fixture(autouse=True)
+def mock_hf_token():
+    """
+    Auto-mock HF token for all tests.
+
+    The default tokenizer (meta-llama/Llama-3.2-1B) requires HF auth.
+    This fixture provides a fake token so tests don't need to set it explicitly.
+    Tests that specifically test token validation can override this.
+    """
+    with patch.dict(os.environ, {"INGESTOR_HF_ACCESS_TOKEN": "hf_test_token_for_unit_tests"}):
+        yield
+
+
 class TestIngestorSettings:
     """Tests for IngestorSettings."""
 
@@ -26,8 +39,11 @@ class TestIngestorSettings:
         assert settings.enabled is True
         assert settings.health_port == 8080
         assert settings.database_echo is False
-        assert settings.chunk_size == 512
-        assert settings.chunk_overlap == 50
+        assert settings.chunk_size == 1024
+        assert settings.chunk_overlap == 124
+        assert settings.text_depth == "page"
+        # HF token comes from test fixture (autouse)
+        assert settings.hf_access_token == "hf_test_token_for_unit_tests"
         assert settings.max_retries == 3
         assert settings.retry_base_delay == 1.0
         assert settings.log_level == "INFO"
@@ -57,7 +73,7 @@ class TestIngestorSettings:
         assert settings.minio_access_key == "minioadmin"
         assert settings.minio_secret_key == "minioadmin"
         assert settings.minio_secure is False
-        assert settings.minio_bucket == "documents"
+        assert settings.minio_bucket == "echomind-documents"
 
     def test_qdrant_defaults(self) -> None:
         """Test Qdrant default configuration."""
@@ -73,19 +89,22 @@ class TestIngestorSettings:
 
         assert settings.embedder_host == "echomind-embedder"
         assert settings.embedder_port == 50051
-        assert settings.embedder_timeout == 30.0
+        assert settings.embedder_timeout == 600.0
 
     def test_extraction_defaults(self) -> None:
         """Test nv-ingest extraction default configuration."""
         settings = IngestorSettings()
 
         assert settings.extract_method == "pdfium"
-        assert settings.chunk_size == 512
-        assert settings.chunk_overlap == 50
-        assert settings.tokenizer == "meta-llama/Llama-3.2-1B"
+        assert settings.text_depth == "page"
+        assert settings.chunk_size == 1024
+        assert settings.chunk_overlap == 124
+        assert settings.tokenizer == "nvidia/llama-nemotron-embed-1b-v2"
+        # HF token comes from test fixture
+        assert settings.hf_access_token == "hf_test_token_for_unit_tests"
 
-    def test_optional_nims_disabled_by_default(self) -> None:
-        """Test optional NIMs are disabled by default."""
+    def test_optional_nims_defaults(self) -> None:
+        """Test optional NIMs have correct defaults."""
         settings = IngestorSettings()
 
         assert settings.yolox_enabled is False
@@ -174,6 +193,128 @@ class TestIngestorSettings:
         with patch.dict(os.environ, {"INGESTOR_CHUNK_OVERLAP": "-1"}):
             with pytest.raises(ValueError):
                 IngestorSettings()
+
+    def test_chunk_overlap_must_be_less_than_chunk_size(self) -> None:
+        """Test chunk_overlap >= chunk_size is rejected.
+
+        An overlap equal to or greater than size causes the tokenizer
+        to enter an infinite loop or produce zero-length chunks.
+        """
+        # overlap == size
+        with patch.dict(
+            os.environ,
+            {"INGESTOR_CHUNK_SIZE": "100", "INGESTOR_CHUNK_OVERLAP": "100"},
+        ):
+            with pytest.raises(ValueError, match="chunk_overlap.*must be less than.*chunk_size"):
+                IngestorSettings()
+
+        # overlap > size
+        with patch.dict(
+            os.environ,
+            {"INGESTOR_CHUNK_SIZE": "100", "INGESTOR_CHUNK_OVERLAP": "200"},
+        ):
+            with pytest.raises(ValueError, match="chunk_overlap.*must be less than.*chunk_size"):
+                IngestorSettings()
+
+    def test_chunk_overlap_less_than_size_is_valid(self) -> None:
+        """Test chunk_overlap < chunk_size is accepted."""
+        with patch.dict(
+            os.environ,
+            {"INGESTOR_CHUNK_SIZE": "100", "INGESTOR_CHUNK_OVERLAP": "99"},
+        ):
+            settings = IngestorSettings()
+            assert settings.chunk_overlap == 99
+            assert settings.chunk_size == 100
+
+    def test_riva_endpoint_default_is_grpc_format(self) -> None:
+        """Test Riva endpoint default uses gRPC format (no http:// prefix).
+
+        gRPC endpoints are host:port strings. HTTP prefix would confuse
+        the nv-ingest-api audio extractor which passes this as the gRPC endpoint.
+        """
+        settings = IngestorSettings()
+        assert settings.riva_endpoint == "riva:50051"
+        assert not settings.riva_endpoint.startswith("http://")
+
+    def test_text_depth_validation_valid(self) -> None:
+        """Test text_depth validation accepts valid values."""
+        for value in ["document", "page"]:
+            with patch.dict(os.environ, {"INGESTOR_TEXT_DEPTH": value}):
+                settings = IngestorSettings()
+                assert settings.text_depth == value
+
+    def test_text_depth_validation_invalid(self) -> None:
+        """Test text_depth validation rejects invalid values."""
+        with patch.dict(os.environ, {"INGESTOR_TEXT_DEPTH": "invalid"}):
+            with pytest.raises(ValueError, match="Invalid text_depth"):
+                IngestorSettings()
+
+    def test_text_depth_default_is_page(self) -> None:
+        """Test text_depth defaults to 'page' (NVIDIA recommended).
+
+        NVIDIA research shows page-level chunking achieves highest
+        accuracy (0.648) with lowest variance across document types.
+        """
+        settings = IngestorSettings()
+        assert settings.text_depth == "page"
+
+    def test_hf_token_optional_for_all_tokenizers(self) -> None:
+        """Test HF token is optional at runtime for all tokenizers.
+
+        Models are pre-downloaded at Docker build time and cached locally.
+        Runtime runs in offline mode (HF_HUB_OFFLINE=1, TRANSFORMERS_OFFLINE=1),
+        so no HuggingFace authentication is needed at startup.
+        """
+        # Gated models work without token (pre-cached at build time)
+        for tokenizer in [
+            "meta-llama/Llama-3.2-1B",
+            "meta-llama/Llama-3-8B",
+            "nvidia/llama-nemotron-embed-1b-v2",
+        ]:
+            with patch.dict(
+                os.environ,
+                {"INGESTOR_TOKENIZER": tokenizer},
+                clear=False,
+            ):
+                os.environ.pop("INGESTOR_HF_ACCESS_TOKEN", None)
+                settings = IngestorSettings()
+                assert settings.tokenizer == tokenizer
+                assert settings.hf_access_token is None
+
+        # Non-gated models also work without token
+        with patch.dict(
+            os.environ,
+            {"INGESTOR_TOKENIZER": "gpt2"},
+            clear=False,
+        ):
+            os.environ.pop("INGESTOR_HF_ACCESS_TOKEN", None)
+            settings = IngestorSettings()
+            assert settings.tokenizer == "gpt2"
+            assert settings.hf_access_token is None
+
+    def test_hf_token_accepted_when_provided(self) -> None:
+        """Test HF token is accepted and stored when provided."""
+        with patch.dict(
+            os.environ,
+            {
+                "INGESTOR_TOKENIZER": "nvidia/llama-nemotron-embed-1b-v2",
+                "INGESTOR_HF_ACCESS_TOKEN": "hf_test_token_67890",
+            },
+        ):
+            settings = IngestorSettings()
+            assert settings.tokenizer == "nvidia/llama-nemotron-embed-1b-v2"
+            assert settings.hf_access_token == "hf_test_token_67890"
+
+    def test_chunk_overlap_percentage_within_nvidia_range(self) -> None:
+        """Test default chunk overlap is within NVIDIA's 10-20% recommendation.
+
+        NVIDIA research found 15% optimal, with 10-20% acceptable.
+        Default 124/1024 = 12.1% is within this range.
+        """
+        settings = IngestorSettings()
+        overlap_percentage = (settings.chunk_overlap / settings.chunk_size) * 100
+        assert 10.0 <= overlap_percentage <= 20.0, f"Overlap {overlap_percentage:.1f}% outside 10-20% range"
+        assert overlap_percentage == pytest.approx(12.1, abs=0.1)
 
 
 class TestGetSettings:

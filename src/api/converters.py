@@ -24,6 +24,9 @@ from echomind_lib.models.public.document_model import (
 CONNECTOR_TYPE_MAP: dict[str, ConnectorType] = {
     "teams": ConnectorType.CONNECTOR_TYPE_TEAMS,
     "google_drive": ConnectorType.CONNECTOR_TYPE_GOOGLE_DRIVE,
+    "gmail": ConnectorType.CONNECTOR_TYPE_GMAIL,
+    "google_calendar": ConnectorType.CONNECTOR_TYPE_GOOGLE_CALENDAR,
+    "google_contacts": ConnectorType.CONNECTOR_TYPE_GOOGLE_CONTACTS,
     "onedrive": ConnectorType.CONNECTOR_TYPE_ONEDRIVE,
     "web": ConnectorType.CONNECTOR_TYPE_WEB,
     "file": ConnectorType.CONNECTOR_TYPE_FILE,

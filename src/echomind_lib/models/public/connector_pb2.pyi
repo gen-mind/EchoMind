@@ -17,6 +17,9 @@ class ConnectorType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     CONNECTOR_TYPE_ONEDRIVE: _ClassVar[ConnectorType]
     CONNECTOR_TYPE_WEB: _ClassVar[ConnectorType]
     CONNECTOR_TYPE_FILE: _ClassVar[ConnectorType]
+    CONNECTOR_TYPE_GMAIL: _ClassVar[ConnectorType]
+    CONNECTOR_TYPE_GOOGLE_CALENDAR: _ClassVar[ConnectorType]
+    CONNECTOR_TYPE_GOOGLE_CONTACTS: _ClassVar[ConnectorType]
 
 class ConnectorStatus(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -39,6 +42,9 @@ CONNECTOR_TYPE_GOOGLE_DRIVE: ConnectorType
 CONNECTOR_TYPE_ONEDRIVE: ConnectorType
 CONNECTOR_TYPE_WEB: ConnectorType
 CONNECTOR_TYPE_FILE: ConnectorType
+CONNECTOR_TYPE_GMAIL: ConnectorType
+CONNECTOR_TYPE_GOOGLE_CALENDAR: ConnectorType
+CONNECTOR_TYPE_GOOGLE_CONTACTS: ConnectorType
 CONNECTOR_STATUS_UNSPECIFIED: ConnectorStatus
 CONNECTOR_STATUS_PENDING: ConnectorStatus
 CONNECTOR_STATUS_SYNCING: ConnectorStatus

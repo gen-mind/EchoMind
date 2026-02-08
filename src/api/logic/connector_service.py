@@ -14,7 +14,11 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from api.logic.exceptions import ForbiddenError, NotFoundError
+from api.logic.exceptions import (
+    ForbiddenError,
+    NotFoundError,
+    ServiceUnavailableError,
+)
 from api.logic.permissions import (
     SCOPE_GROUP,
     SCOPE_ORG,
@@ -121,8 +125,8 @@ class ConnectorService:
         team_ids = await self.permissions.get_user_team_ids(user.id)
 
         # Build base query with RBAC filters
-        if self.permissions.is_superadmin(user):
-            # Superadmins see all
+        if self.permissions.is_admin(user):
+            # Admins see all
             query = select(ConnectorORM).where(ConnectorORM.deleted_date.is_(None))
         else:
             # Regular users see: own + team + org connectors
@@ -405,8 +409,8 @@ class ConnectorService:
             return False, "Sync already in progress"
 
         if not self.nats:
-            logger.warning("⚠️ NATS publisher not available, cannot trigger sync")
-            return False, "NATS not available"
+            logger.error("❌ NATS publisher required for sync operation but not available")
+            raise ServiceUnavailableError("NATS message queue")
 
         # Update status to pending
         connector.status = "pending"
@@ -462,8 +466,8 @@ class ConnectorService:
             connector: The connector to sync.
         """
         if not self.nats:
-            logger.warning("⚠️ NATS publisher not available")
-            return
+            logger.error("❌ NATS publisher required for sync but not available")
+            raise ServiceUnavailableError("NATS message queue")
 
         # Generate chunking session ID
         chunking_session = str(uuid.uuid4())

@@ -80,16 +80,44 @@ class EmbedServicer(EmbedServiceServicer):
 
         Returns:
             EmbedResponse with embedding vectors.
+
+        Raises:
+            INVALID_ARGUMENT: If texts list is empty or contains invalid strings.
         """
         start_time = time.time()
         texts_count = len(request.texts)
 
         try:
+            # Validate texts list is not empty
             if not request.texts:
                 context.abort(
                     grpc.StatusCode.INVALID_ARGUMENT,
                     "texts cannot be empty",
                 )
+
+            # Validate each text string
+            MIN_TEXT_LENGTH = 50
+            for idx, text in enumerate(request.texts):
+                # Check for empty strings
+                if not text:
+                    context.abort(
+                        grpc.StatusCode.INVALID_ARGUMENT,
+                        f"Text at index {idx} is empty",
+                    )
+
+                # Check for whitespace-only strings
+                if not text.strip():
+                    context.abort(
+                        grpc.StatusCode.INVALID_ARGUMENT,
+                        f"Text at index {idx} contains only whitespace",
+                    )
+
+                # Check minimum length
+                if len(text.strip()) < MIN_TEXT_LENGTH:
+                    context.abort(
+                        grpc.StatusCode.INVALID_ARGUMENT,
+                        f"Text at index {idx} is too short ({len(text.strip())} chars, minimum {MIN_TEXT_LENGTH})",
+                    )
 
             logger.info(f"📨 Embed request: {texts_count} texts")
 
@@ -189,21 +217,34 @@ def serve() -> None:
     SentenceEncoder.set_cache_limit(settings.model_cache_limit)
     SentenceEncoder.set_device(checker.get_torch_device())
 
-    # Pre-load default model
-    logger.info(f"🧠 Pre-loading model: {settings.model_name}")
-    try:
-        dim = SentenceEncoder.get_dimension(settings.model_name)
-        logger.info(f"🧠 Model loaded, dimension: {dim}")
-    except Exception as e:
-        logger.error(f"❌ Failed to load model: {e}")
-        sys.exit(1)
-
-    # Start health server
+    # Start health server (must start before model loading for K8s liveness)
     health_server = HealthServer(port=settings.health_port)
     health_thread = threading.Thread(target=health_server.start, daemon=True)
     health_thread.start()
-    health_server.set_ready(True)
     logger.info(f"💓 Health server started on port {settings.health_port}")
+
+    # Pre-load default model with retry
+    max_retries = 5
+    retry_delay = 30
+    logger.info(f"🧠 Pre-loading model: {settings.model_name}")
+    for attempt in range(1, max_retries + 1):
+        try:
+            dim = SentenceEncoder.get_dimension(settings.model_name)
+            logger.info(f"🧠 Model loaded, dimension: {dim}")
+            health_server.set_ready(True)
+            break
+        except Exception as e:
+            if attempt < max_retries:
+                logger.warning(
+                    f"⚠️ Model load attempt {attempt}/{max_retries} failed: {e}"
+                )
+                logger.info(f"🔄 Retrying in {retry_delay}s...")
+                time.sleep(retry_delay)
+            else:
+                logger.error(
+                    f"❌ Model load failed after {max_retries} attempts: {e}"
+                )
+                sys.exit(1)
 
     # Create gRPC server
     server = grpc.server(

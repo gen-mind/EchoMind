@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from nats.aio.msg import Msg
 
+from echomind_lib.constants import MinioBuckets
 from echomind_lib.db.connection import close_db, get_db_manager, init_db
 from echomind_lib.db.minio import close_minio, get_minio, init_minio
 from echomind_lib.db.nats_subscriber import (
@@ -33,6 +34,8 @@ from echomind_lib.models.internal.orchestrator_pb2 import (
     DocumentProcessRequest as DocumentProcessRequestProto,
 )
 from echomind_lib.models.public.connector_model import ConnectorScope
+
+from echomind_lib.helpers.langfuse_helper import init_langfuse, shutdown_langfuse, create_trace
 
 from ingestor.config import get_settings, IngestorSettings
 from ingestor.logic.exceptions import IngestorError
@@ -91,8 +94,14 @@ class IngestorApp:
         logger.info(f"   MinIO: {self._settings.minio_endpoint}")
         logger.info(f"   Embedder: {self._settings.embedder_host}:{self._settings.embedder_port}")
         logger.info(f"   Extract method: {self._settings.extract_method}")
+        logger.info(f"   Text depth: {self._settings.text_depth}")
         logger.info(f"   Chunk size: {self._settings.chunk_size} tokens")
+        logger.info(f"   Chunk overlap: {self._settings.chunk_overlap} tokens ({self._settings.chunk_overlap / self._settings.chunk_size * 100:.1f}%)")
         logger.info(f"   Tokenizer: {self._settings.tokenizer}")
+        if self._settings.hf_access_token:
+            logger.info(f"   HF token: {'*' * 8}{self._settings.hf_access_token[-4:]}")
+        else:
+            logger.warning("   ⚠️ HF token: not set (may cause failures for gated models)")
 
         if not self._settings.enabled:
             logger.warning("⚠️ Ingestor is disabled via configuration")
@@ -134,9 +143,10 @@ class IngestorApp:
                 access_key=self._settings.minio_access_key,
                 secret_key=self._settings.minio_secret_key,
                 secure=self._settings.minio_secure,
+                ensure_buckets=MinioBuckets.all(),
             )
             self._minio_connected = True
-            logger.info("📦 MinIO connected")
+            logger.info(f"📦 MinIO connected (buckets: {MinioBuckets.all()})")
         except Exception as e:
             logger.warning(f"⚠️ MinIO connection failed: {e}")
             logger.info("🔄 Will retry MinIO connection in background...")
@@ -185,6 +195,9 @@ class IngestorApp:
                 asyncio.create_task(self._retry_nats_connection())
             )
 
+        # Initialize Langfuse (LLM observability)
+        init_langfuse()
+
         # Update readiness based on connection status
         self._update_readiness()
         self._running = True
@@ -219,9 +232,10 @@ class IngestorApp:
                     access_key=self._settings.minio_access_key,
                     secret_key=self._settings.minio_secret_key,
                     secure=self._settings.minio_secure,
+                    ensure_buckets=MinioBuckets.all(),
                 )
                 self._minio_connected = True
-                logger.info("📦 MinIO reconnected")
+                logger.info(f"📦 MinIO reconnected (buckets: {MinioBuckets.all()})")
                 self._update_readiness()
             except Exception as e:
                 logger.warning(f"⚠️ MinIO reconnection attempt failed: {e}")
@@ -326,7 +340,18 @@ class IngestorApp:
             request = DocumentProcessRequest.from_protobuf(proto_request)
             document_id = request.document_id
 
-            logger.info(f"📥 Processing document {document_id} (path: {request.minio_path})")
+            logger.debug(f"[id:{document_id}] NATS message received (path: {request.minio_path})")
+
+            # Create Langfuse trace for this document ingestion
+            trace = create_trace(
+                name="document-ingest",
+                metadata={
+                    "document_id": document_id,
+                    "chunking_session": request.chunking_session,
+                    "mime_type": request.minio_path.split(".")[-1] if "." in request.minio_path else "unknown",
+                },
+                tags=["ingestor", "document"],
+            )
 
             # Get database session and clients
             db = get_db_manager()
@@ -363,16 +388,24 @@ class IngestorApp:
                         team_id=request.team_id if request.team_id else None,
                     )
 
+                    trace.update(
+                        output={
+                            "status": "completed",
+                            "chunk_count": result.get("chunk_count", 0),
+                            "collection_name": result.get("collection_name", ""),
+                        },
+                    )
+
                     # ACK message on success
                     await msg.ack()
-                    logger.info(f"✅ Document {document_id} processed: {result.get('chunk_count', 0)} chunks")
+                    # Main completion log is in ingestor_service.py
 
                 finally:
                     await service.close()
 
         except IngestorError as e:
             error_info = await handle_ingestor_error(e)
-            logger.error(f"❌ Ingestor error for document {document_id}: {e.message}")
+            logger.error(f"❌ [id:{document_id}] {e.message}")
 
             if error_info["should_retry"]:
                 await msg.nak()  # NATS will redeliver
@@ -380,12 +413,12 @@ class IngestorApp:
                 await msg.term()  # Terminal failure, don't retry
 
         except Exception as e:
-            logger.exception(f"💀 Unexpected error processing document {document_id}: {e}")
+            logger.exception(f"💀 [id:{document_id}] Unexpected error: {e}")
             await msg.nak()  # Allow retry for unexpected errors
 
         finally:
             elapsed = asyncio.get_event_loop().time() - start_time
-            logger.info(f"⏰ Elapsed: {elapsed:.2f}s")
+            logger.info(f"⏰ [id:{document_id}] Elapsed: {elapsed:.2f}s")
 
     async def stop(self) -> None:
         """
@@ -425,6 +458,11 @@ class IngestorApp:
         try:
             await close_db()
             logger.info("🗄️ Database disconnected")
+        except Exception:
+            pass
+
+        try:
+            shutdown_langfuse()
         except Exception:
             pass
 

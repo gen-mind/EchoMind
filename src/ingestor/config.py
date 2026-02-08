@@ -5,7 +5,7 @@ Uses Pydantic Settings to load environment variables.
 All settings prefixed with INGESTOR_ for namespace isolation.
 """
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -82,7 +82,7 @@ class IngestorSettings(BaseSettings):
         description="Use HTTPS for MinIO",
     )
     minio_bucket: str = Field(
-        "documents",
+        "echomind-documents",
         description="MinIO bucket for document storage",
     )
 
@@ -109,8 +109,10 @@ class IngestorSettings(BaseSettings):
         50051,
         description="Embedder gRPC port",
     )
+    # TODO: Revert to 30s once embedder runs on GPU. Currently 600s
+    # because CPU inference takes ~200s per batch with the 1B model.
     embedder_timeout: float = Field(
-        30.0,
+        600.0,
         description="gRPC call timeout in seconds",
         gt=0,
     )
@@ -121,25 +123,35 @@ class IngestorSettings(BaseSettings):
         description="PDF extraction method: pdfium | pdfium_hybrid | nemotron_parse",
     )
     chunk_size: int = Field(
-        512,
-        description="Chunk size in TOKENS (not characters)",
+        1024,
+        description="Chunk size in TOKENS (not characters). NVIDIA recommends 512-1024 for enterprise docs.",
         gt=0,
         le=8192,
     )
     chunk_overlap: int = Field(
-        50,
-        description="Chunk overlap in TOKENS",
+        124,
+        description="Chunk overlap in TOKENS. NVIDIA research shows 10-20% overlap optimal (154 tokens = 15% for size 1024).",
         ge=0,
     )
     tokenizer: str = Field(
-        "meta-llama/Llama-3.2-1B",
-        description="HuggingFace tokenizer for chunking",
+        "nvidia/llama-nemotron-embed-1b-v2",
+        description="HuggingFace tokenizer for chunking (must match embedding model for perfect alignment)",
+    )
+    text_depth: str = Field(
+        "page",
+        description="Text extraction granularity: 'document' (full doc) or 'page' (per-page). "
+                    "NVIDIA research shows 'page' achieves highest accuracy (0.648).",
+    )
+    hf_access_token: str | None = Field(
+        None,
+        description="HuggingFace access token (REQUIRED for meta-llama/Llama-3.2-1B tokenizer). "
+                    "Get token at: https://huggingface.co/settings/tokens",
     )
 
     # Optional NIMs
     yolox_enabled: bool = Field(
         False,
-        description="Enable YOLOX NIM for table/chart detection",
+        description="Enable YOLOX NIM for table/chart detection (requires yolox-nim service)",
     )
     yolox_endpoint: str = Field(
         "http://yolox-nim:8000",
@@ -150,8 +162,8 @@ class IngestorSettings(BaseSettings):
         description="Enable Riva NIM for audio transcription",
     )
     riva_endpoint: str = Field(
-        "http://riva:50051",
-        description="Riva NIM endpoint",
+        "riva:50051",
+        description="Riva NIM gRPC endpoint (host:port, no http:// prefix)",
     )
 
     # Retry Settings
@@ -217,6 +229,76 @@ class IngestorSettings(BaseSettings):
         if v not in valid_methods:
             raise ValueError(f"Invalid extract method: {v}. Must be one of {valid_methods}")
         return v
+
+    @field_validator("text_depth")
+    @classmethod
+    def validate_text_depth(cls, v: str) -> str:
+        """
+        Validate text_depth parameter.
+
+        Args:
+            v: Text depth string.
+
+        Returns:
+            Validated text_depth.
+
+        Raises:
+            ValueError: If text_depth is invalid.
+        """
+        valid_values = {"document", "page"}
+        if v not in valid_values:
+            raise ValueError(
+                f"Invalid text_depth: {v}. Must be one of {valid_values}. "
+                f"NVIDIA recommends 'page' for best retrieval accuracy."
+            )
+        return v
+
+    @model_validator(mode="after")
+    def validate_hf_token_for_gated_models(self) -> "IngestorSettings":
+        """
+        Log HF token status for gated tokenizers.
+
+        The HF token is only needed at Docker BUILD time to download gated
+        models. At runtime, models are pre-cached and offline mode is
+        enabled (HF_HUB_OFFLINE=1, TRANSFORMERS_OFFLINE=1), so no
+        authentication is required.
+
+        Returns:
+            Validated settings instance.
+        """
+        import logging
+        logger = logging.getLogger("echomind-ingestor.config")
+
+        if self.hf_access_token:
+            logger.info(f"✅ HuggingFace token configured for tokenizer: {self.tokenizer}")
+        else:
+            logger.info(
+                f"ℹ️ HuggingFace token not set — using pre-cached tokenizer "
+                f"'{self.tokenizer}' in offline mode"
+            )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_chunk_overlap_less_than_size(self) -> "IngestorSettings":
+        """
+        Validate chunk_overlap is strictly less than chunk_size.
+
+        An overlap >= size causes the tokenizer to enter an infinite loop
+        or produce zero-length chunks.
+
+        Returns:
+            Validated settings instance.
+
+        Raises:
+            ValueError: If chunk_overlap >= chunk_size.
+        """
+        if self.chunk_overlap >= self.chunk_size:
+            raise ValueError(
+                f"chunk_overlap ({self.chunk_overlap}) must be less than "
+                f"chunk_size ({self.chunk_size})"
+            )
+        return self
 
 
 _settings: IngestorSettings | None = None

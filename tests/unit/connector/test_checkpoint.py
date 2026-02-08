@@ -7,6 +7,9 @@ import pytest
 from connector.logic.checkpoint import (
     ConnectorCheckpoint,
     DriveRetrievalStage,
+    GmailCheckpoint,
+    GoogleCalendarCheckpoint,
+    GoogleContactsCheckpoint,
     GoogleDriveCheckpoint,
     SharePointCheckpoint,
     SiteDescriptor,
@@ -226,6 +229,87 @@ class TestSharePointCheckpoint:
         assert result is False
 
 
+class TestGmailCheckpoint:
+    """Tests for GmailCheckpoint."""
+
+    def test_default_values(self) -> None:
+        """Test default checkpoint values."""
+        checkpoint = GmailCheckpoint()
+
+        assert checkpoint.history_id is None
+        assert checkpoint.page_token is None
+        assert checkpoint.last_full_sync_at is None
+        assert checkpoint.all_retrieved_thread_ids == set()
+
+    def test_mark_thread_retrieved_new(self) -> None:
+        """Test marking new thread as retrieved."""
+        checkpoint = GmailCheckpoint()
+
+        result = checkpoint.mark_thread_retrieved("thread123")
+
+        assert result is True
+        assert "thread123" in checkpoint.all_retrieved_thread_ids
+        assert checkpoint.documents_processed == 1
+
+    def test_mark_thread_retrieved_duplicate(self) -> None:
+        """Test marking duplicate thread returns False."""
+        checkpoint = GmailCheckpoint()
+        checkpoint.mark_thread_retrieved("thread123")
+
+        result = checkpoint.mark_thread_retrieved("thread123")
+
+        assert result is False
+        assert checkpoint.documents_processed == 1
+
+
+class TestGoogleCalendarCheckpoint:
+    """Tests for GoogleCalendarCheckpoint."""
+
+    def test_default_values(self) -> None:
+        """Test default checkpoint values."""
+        checkpoint = GoogleCalendarCheckpoint()
+
+        assert checkpoint.sync_tokens == {}
+        assert checkpoint.calendar_ids is None
+        assert checkpoint.current_calendar_idx == 0
+        assert checkpoint.page_token is None
+
+    def test_can_set_values(self) -> None:
+        """Test setting checkpoint values."""
+        checkpoint = GoogleCalendarCheckpoint(
+            sync_tokens={"primary": "sync_tok_1", "work@example.com": "sync_tok_2"},
+            calendar_ids=["primary", "work@example.com"],
+            current_calendar_idx=1,
+            page_token="page_tok_1",
+        )
+
+        assert checkpoint.sync_tokens == {"primary": "sync_tok_1", "work@example.com": "sync_tok_2"}
+        assert checkpoint.calendar_ids == ["primary", "work@example.com"]
+        assert checkpoint.current_calendar_idx == 1
+        assert checkpoint.page_token == "page_tok_1"
+
+
+class TestGoogleContactsCheckpoint:
+    """Tests for GoogleContactsCheckpoint."""
+
+    def test_default_values(self) -> None:
+        """Test default checkpoint values."""
+        checkpoint = GoogleContactsCheckpoint()
+
+        assert checkpoint.sync_token is None
+        assert checkpoint.page_token is None
+
+    def test_can_set_values(self) -> None:
+        """Test setting checkpoint values."""
+        checkpoint = GoogleContactsCheckpoint(
+            sync_token="contacts_sync_tok",
+            page_token="contacts_page_tok",
+        )
+
+        assert checkpoint.sync_token == "contacts_sync_tok"
+        assert checkpoint.page_token == "contacts_page_tok"
+
+
 class TestSerialization:
     """Tests for checkpoint serialization."""
 
@@ -302,6 +386,81 @@ class TestSerialization:
         with pytest.raises(ValueError, match="Unknown checkpoint type"):
             deserialize_checkpoint(data)
 
+    def test_serialize_gmail_checkpoint(self) -> None:
+        """Test serializing Gmail checkpoint."""
+        checkpoint = GmailCheckpoint(history_id="12345")
+
+        data = serialize_checkpoint(checkpoint)
+
+        assert data["_type"] == "GmailCheckpoint"
+        assert data["history_id"] == "12345"
+
+    def test_deserialize_gmail_checkpoint(self) -> None:
+        """Test deserializing Gmail checkpoint."""
+        data = {
+            "_type": "GmailCheckpoint",
+            "history_id": "12345",
+            "page_token": "page1",
+        }
+
+        checkpoint = deserialize_checkpoint(data)
+
+        assert isinstance(checkpoint, GmailCheckpoint)
+        assert checkpoint.history_id == "12345"
+        assert checkpoint.page_token == "page1"
+
+    def test_serialize_calendar_checkpoint(self) -> None:
+        """Test serializing Calendar checkpoint."""
+        checkpoint = GoogleCalendarCheckpoint(
+            sync_tokens={"primary": "sync_tok_1", "work": "sync_tok_2"},
+            calendar_ids=["primary", "work"],
+            current_calendar_idx=1,
+        )
+
+        data = serialize_checkpoint(checkpoint)
+
+        assert data["_type"] == "GoogleCalendarCheckpoint"
+        assert data["sync_tokens"] == {"primary": "sync_tok_1", "work": "sync_tok_2"}
+        assert data["calendar_ids"] == ["primary", "work"]
+        assert data["current_calendar_idx"] == 1
+
+    def test_deserialize_calendar_checkpoint(self) -> None:
+        """Test deserializing Calendar checkpoint."""
+        data = {
+            "_type": "GoogleCalendarCheckpoint",
+            "sync_tokens": {"primary": "sync_tok"},
+            "calendar_ids": ["primary"],
+        }
+
+        checkpoint = deserialize_checkpoint(data)
+
+        assert isinstance(checkpoint, GoogleCalendarCheckpoint)
+        assert checkpoint.sync_tokens == {"primary": "sync_tok"}
+        assert checkpoint.calendar_ids == ["primary"]
+
+    def test_serialize_contacts_checkpoint(self) -> None:
+        """Test serializing Contacts checkpoint."""
+        checkpoint = GoogleContactsCheckpoint(sync_token="contacts_tok")
+
+        data = serialize_checkpoint(checkpoint)
+
+        assert data["_type"] == "GoogleContactsCheckpoint"
+        assert data["sync_token"] == "contacts_tok"
+
+    def test_deserialize_contacts_checkpoint(self) -> None:
+        """Test deserializing Contacts checkpoint."""
+        data = {
+            "_type": "GoogleContactsCheckpoint",
+            "sync_token": "contacts_tok",
+            "page_token": "page2",
+        }
+
+        checkpoint = deserialize_checkpoint(data)
+
+        assert isinstance(checkpoint, GoogleContactsCheckpoint)
+        assert checkpoint.sync_token == "contacts_tok"
+        assert checkpoint.page_token == "page2"
+
     def test_roundtrip_serialization(self) -> None:
         """Test checkpoint survives serialize/deserialize roundtrip."""
         original = GoogleDriveCheckpoint(
@@ -321,3 +480,43 @@ class TestSerialization:
         assert restored.completion_stage == original.completion_stage
         assert restored.documents_processed == original.documents_processed
         assert restored.changes_start_page_token == original.changes_start_page_token
+
+    def test_roundtrip_gmail_checkpoint(self) -> None:
+        """Test Gmail checkpoint roundtrip."""
+        original = GmailCheckpoint(
+            history_id="99999",
+            documents_processed=42,
+        )
+        original.all_retrieved_thread_ids.add("t1")
+
+        data = serialize_checkpoint(original)
+        restored = deserialize_checkpoint(data)
+
+        assert isinstance(restored, GmailCheckpoint)
+        assert restored.history_id == "99999"
+        assert restored.documents_processed == 42
+
+    def test_roundtrip_calendar_checkpoint(self) -> None:
+        """Test Calendar checkpoint roundtrip."""
+        original = GoogleCalendarCheckpoint(
+            sync_tokens={"primary": "cal_sync"},
+            calendar_ids=["primary"],
+            current_calendar_idx=0,
+        )
+
+        data = serialize_checkpoint(original)
+        restored = deserialize_checkpoint(data)
+
+        assert isinstance(restored, GoogleCalendarCheckpoint)
+        assert restored.sync_tokens == {"primary": "cal_sync"}
+        assert restored.calendar_ids == ["primary"]
+
+    def test_roundtrip_contacts_checkpoint(self) -> None:
+        """Test Contacts checkpoint roundtrip."""
+        original = GoogleContactsCheckpoint(sync_token="ppl_sync")
+
+        data = serialize_checkpoint(original)
+        restored = deserialize_checkpoint(data)
+
+        assert isinstance(restored, GoogleContactsCheckpoint)
+        assert restored.sync_token == "ppl_sync"

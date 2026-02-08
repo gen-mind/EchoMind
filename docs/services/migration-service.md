@@ -13,6 +13,8 @@ The Migration Service is a **batch job** that manages database schema migrations
 - Runs Alembic migrations on startup
 - Applies pending schema changes to PostgreSQL
 - Handles version tracking and rollback capability
+- Auto-creates the `langfuse` database when `ENABLE_LANGFUSE=true`
+- Verifies critical schema objects after migration
 - Runs as an init container in Kubernetes
 - Ensures database is ready before other services start
 
@@ -70,6 +72,24 @@ sequenceDiagram
 
     K->>K: Start main services
 ```
+
+### Langfuse Database Creation
+
+When `ENABLE_LANGFUSE=true` is set, the migration service auto-creates the `langfuse` PostgreSQL database before running Alembic migrations. This supports existing deployments that don't have the database in `init-db.sql`.
+
+```mermaid
+flowchart TB
+    START[Migration starts] --> CHECK_ENV{ENABLE_LANGFUSE=true?}
+    CHECK_ENV -->|No| ALEMBIC[Run Alembic migrations]
+    CHECK_ENV -->|Yes| CHECK_DB{langfuse DB exists?}
+    CHECK_DB -->|Yes| LOG_EXISTS[Log: already exists]
+    CHECK_DB -->|No| CREATE_DB[CREATE DATABASE langfuse]
+    CREATE_DB --> LOG_CREATED[Log: created]
+    LOG_EXISTS --> ALEMBIC
+    LOG_CREATED --> ALEMBIC
+```
+
+The function connects to the `postgres` maintenance database with `AUTOCOMMIT` isolation level (required for `CREATE DATABASE`) and handles errors gracefully — a failure to create the Langfuse database does not block EchoMind migrations.
 
 ---
 
@@ -269,6 +289,9 @@ DATABASE_URL=postgresql://user:pass@postgres:5432/echomind
 # Migration settings
 MIGRATION_RETRY_COUNT=5       # Retries if DB not ready
 MIGRATION_RETRY_DELAY=5       # Seconds between retries
+
+# Langfuse (optional)
+ENABLE_LANGFUSE=false         # Set to 'true' to auto-create langfuse database
 ```
 
 ---
@@ -489,6 +512,8 @@ All service logic MUST have unit tests. See [Testing Standards](../../.claude/ru
 ```
 tests/unit/migration/
 ├── test_migration_runner.py
+├── test_ensure_langfuse_db.py  # Langfuse DB creation + gate tests
+├── test_config.py
 └── test_db_connection.py
 ```
 
@@ -498,6 +523,8 @@ tests/unit/migration/
 |-----------|---------------|
 | wait_for_db | Retry logic, timeout handling |
 | run_migrations | Success/failure paths |
+| ensure_langfuse_database | Create/exists/error/gate paths |
+| verify_schema | Table/column existence checks |
 
 ### Example
 
@@ -545,5 +572,6 @@ class TestRunMigrations:
 ## References
 
 - [DB Schema](../db-schema.md) - Database schema documentation
+- [Langfuse Setup](../langfuse-setup.md) - Langfuse configuration and database creation
 - [Alembic Documentation](https://alembic.sqlalchemy.org/) - Migration tool docs
 - [SQLAlchemy](https://www.sqlalchemy.org/) - ORM documentation

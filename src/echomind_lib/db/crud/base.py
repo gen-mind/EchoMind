@@ -4,7 +4,7 @@ Base CRUD class with common database operations.
 All model-specific CRUD classes inherit from this base.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Generic, Sequence, TypeVar
 
 from sqlalchemy import func, select
@@ -257,7 +257,7 @@ class SoftDeleteMixin(Generic[ModelT]):
         """
         db_obj = await self.get_by_id_active(session, id)
         if db_obj:
-            db_obj.deleted_date = datetime.utcnow()
+            db_obj.deleted_date = datetime.now(timezone.utc)
             if hasattr(db_obj, "user_id_last_update") and user_id:
                 db_obj.user_id_last_update = user_id
             await session.flush()

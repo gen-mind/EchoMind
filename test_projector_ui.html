@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TensorBoard Projector - Test UI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #2d3748;
+            font-size: 32px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #718096;
+            text-align: center;
+            margin-bottom: 40px;
+            font-size: 16px;
+        }
+
+        .config-section {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+
+        .config-section h2 {
+            font-size: 18px;
+            color: #2d3748;
+            margin-bottom: 15px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            color: #4a5568;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .search-box {
+            margin-bottom: 30px;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 16px 20px;
+            font-size: 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+        }
+
+        .search-hint {
+            color: #718096;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .stat-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        }
+
+        .stat-label {
+            color: #718096;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .stat-collection {
+            color: #4a5568;
+            font-size: 14px;
+            margin-bottom: 12px;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
+        .stat-count {
+            font-size: 36px;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 8px;
+        }
+
+        .stat-unit {
+            color: #a0aec0;
+            font-size: 12px;
+        }
+
+        .buttons-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .viz-button {
+            padding: 20px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: white;
+            text-align: center;
+        }
+
+        .viz-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .viz-button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .viz-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-user {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .btn-team {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .btn-org {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        .btn-stats {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            grid-column: 1 / -1;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #718096;
+        }
+
+        .spinner {
+            border: 4px solid #e2e8f0;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .message {
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+
+        .message-success {
+            background: #c6f6d5;
+            color: #22543d;
+            border-left: 4px solid #38a169;
+        }
+
+        .message-error {
+            background: #fed7d7;
+            color: #742a2a;
+            border-left: 4px solid #e53e3e;
+        }
+
+        .message-info {
+            background: #bee3f8;
+            color: #2c5282;
+            border-left: 4px solid #3182ce;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 TensorBoard Projector</h1>
+        <p class="subtitle">Visualize your vector embeddings in 3D</p>
+
+        <!-- Configuration -->
+        <div class="config-section">
+            <h2>⚙️ Configuration</h2>
+            <div class="input-group">
+                <label>API Base URL</label>
+                <input type="text" id="apiUrl" value="https://api.demo.echomind.ch" placeholder="https://api.demo.echomind.ch">
+            </div>
+            <div class="input-group">
+                <label>Bearer Token (Admin required)</label>
+                <input type="password" id="token" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+            </div>
+            <div class="input-group">
+                <label>Team ID (for team scope)</label>
+                <input type="number" id="teamId" placeholder="10" value="">
+            </div>
+            <div class="input-group">
+                <label>Org ID (for org scope)</label>
+                <input type="number" id="orgId" placeholder="1" value="1">
+            </div>
+        </div>
+
+        <!-- Search Box -->
+        <div class="search-box">
+            <label>🔍 Search Query (optional)</label>
+            <input type="text" id="searchQuery" placeholder="Filter vectors by keyword...">
+            <p class="search-hint">If filled: visualize 10k vectors matching search. If empty: visualize 10k vectors from whole collection.</p>
+        </div>
+
+        <!-- Stats Display -->
+        <div id="statsContainer" style="display: none;">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Your Vectors</div>
+                    <div class="stat-collection" id="userCollection">—</div>
+                    <div class="stat-count" id="userCount">—</div>
+                    <div class="stat-unit">vectors</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Team Vectors</div>
+                    <div class="stat-collection" id="teamCollection">—</div>
+                    <div class="stat-count" id="teamCount">—</div>
+                    <div class="stat-unit">vectors</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Org Vectors</div>
+                    <div class="stat-collection" id="orgCollection">—</div>
+                    <div class="stat-count" id="orgCount">—</div>
+                    <div class="stat-unit">vectors</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="buttons-grid">
+            <button class="viz-button btn-stats" onclick="loadStats()">
+                📊 Load Statistics
+            </button>
+            <button class="viz-button btn-user" onclick="generateViz('user')">
+                👤 My Vectors
+            </button>
+            <button class="viz-button btn-team" onclick="generateViz('team')">
+                👥 Team Vectors
+            </button>
+            <button class="viz-button btn-org" onclick="generateViz('org')">
+                🏢 Org Vectors
+            </button>
+        </div>
+
+        <!-- Messages -->
+        <div id="messageContainer"></div>
+    </div>
+
+    <script>
+        function getHeaders() {
+            const token = document.getElementById('token').value;
+            if (!token) {
+                throw new Error('Please enter your Bearer token');
+            }
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            };
+        }
+
+        function showMessage(message, type = 'info') {
+            const container = document.getElementById('messageContainer');
+            const div = document.createElement('div');
+            div.className = `message message-${type}`;
+            div.textContent = message;
+            container.innerHTML = '';
+            container.appendChild(div);
+
+            if (type === 'success') {
+                setTimeout(() => {
+                    div.remove();
+                }, 10000);
+            }
+        }
+
+        async function loadStats() {
+            const apiUrl = document.getElementById('apiUrl').value;
+
+            try {
+                showMessage('Loading statistics...', 'info');
+
+                const response = await fetch(`${apiUrl}/api/v1/projector/stats`, {
+                    headers: getHeaders()
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || `HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // Display stats
+                document.getElementById('userCollection').textContent = data.user_collection;
+                document.getElementById('userCount').textContent = data.user_vectors.toLocaleString();
+
+                document.getElementById('teamCollection').textContent = data.org_collection;
+                document.getElementById('teamCount').textContent = data.org_vectors.toLocaleString();
+
+                document.getElementById('orgCollection').textContent = data.org_collection;
+                document.getElementById('orgCount').textContent = data.org_vectors.toLocaleString();
+
+                document.getElementById('statsContainer').style.display = 'block';
+                showMessage('✅ Statistics loaded successfully', 'success');
+
+            } catch (error) {
+                showMessage(`❌ Error: ${error.message}`, 'error');
+                console.error('Stats error:', error);
+            }
+        }
+
+        async function generateViz(scope) {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const searchQuery = document.getElementById('searchQuery').value.trim() || null;
+            const teamId = document.getElementById('teamId').value ? parseInt(document.getElementById('teamId').value) : null;
+            const orgId = document.getElementById('orgId').value ? parseInt(document.getElementById('orgId').value) : null;
+
+            const payload = {
+                scope: scope,
+                search_query: searchQuery,
+                limit: 10000
+            };
+
+            if (scope === 'team' && teamId) {
+                payload.team_id = teamId;
+            } else if (scope === 'team' && !teamId) {
+                showMessage('⚠️ Please enter a Team ID for team scope', 'error');
+                return;
+            }
+
+            if (scope === 'org' && orgId) {
+                payload.org_id = orgId;
+            }
+
+            try {
+                showMessage(`🎨 Generating ${scope} visualization...`, 'info');
+
+                const response = await fetch(`${apiUrl}/api/v1/projector/generate`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || `HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                showMessage(
+                    `✅ Visualization generated! ${data.num_points} vectors (${data.vector_dimension}D). Opening TensorBoard...`,
+                    'success'
+                );
+
+                // Open TensorBoard in new tab
+                setTimeout(() => {
+                    window.open(data.tensorboard_url, '_blank');
+                }, 1000);
+
+            } catch (error) {
+                showMessage(`❌ Error: ${error.message}`, 'error');
+                console.error('Visualization error:', error);
+            }
+        }
+
+        // Auto-load stats on page load if token is present
+        window.addEventListener('load', () => {
+            const token = document.getElementById('token').value;
+            if (token) {
+                loadStats();
+            }
+        });
+    </script>
+</body>
+</html>

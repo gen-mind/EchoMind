@@ -64,6 +64,12 @@ target-version = ["py312"]
 line-length = 100
 target-version = "py312"
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "-v --strict-markers"
+
 [tool.mypy]
 python_version = "3.12"
 warn_return_any = true

@@ -14,6 +14,7 @@ from echomind_lib.db.models.base import (
     datetime,
     mapped_column,
     relationship,
+    utcnow,
 )
 
 if TYPE_CHECKING:
@@ -34,7 +35,7 @@ class AgentMemory(Base):
     access_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_accessed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     source_session_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("chat_sessions.id"))
-    creation_date: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    creation_date: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False, default=utcnow)
     last_update: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     user_id_last_update: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
     expires_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)

@@ -101,6 +101,7 @@ class JetStreamSubscriber:
         config = ConsumerConfig(
             durable_name=consumer,
             deliver_policy=deliver_policy,
+            deliver_group=consumer,  # Enable queue-based load balancing
             max_deliver=max_deliver,
             ack_wait=30,  # 30 seconds to ack
         )
@@ -134,6 +135,7 @@ class JetStreamSubscriber:
         """
         config = ConsumerConfig(
             durable_name=consumer,
+            deliver_group=consumer,  # Enable queue-based load balancing
             ack_wait=30,
         )
         

@@ -90,6 +90,79 @@ def wait_for_db(database_url: str, retries: int = 5, delay: int = 5) -> bool:
     return False
 
 
+def _get_alembic_config(database_url: str) -> Config:
+    """
+    Create Alembic config with correct paths.
+
+    Args:
+        database_url: PostgreSQL connection URL.
+
+    Returns:
+        Configured Alembic Config object.
+
+    Raises:
+        SystemExit: If alembic.ini not found.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    alembic_ini = os.path.join(script_dir, "alembic.ini")
+
+    if not os.path.exists(alembic_ini):
+        logger.error(f"❌ alembic.ini not found at {alembic_ini}")
+        sys.exit(1)
+
+    alembic_cfg = Config(alembic_ini)
+    alembic_cfg.set_main_option("sqlalchemy.url", database_url)
+    alembic_cfg.set_main_option(
+        "script_location", os.path.join(script_dir, "migrations")
+    )
+    return alembic_cfg
+
+
+def log_available_migrations(database_url: str) -> None:
+    """
+    Log all available migration files and which are pending.
+
+    Args:
+        database_url: PostgreSQL connection URL.
+    """
+    try:
+        from alembic.script import ScriptDirectory
+        from alembic.runtime.migration import MigrationContext
+
+        alembic_cfg = _get_alembic_config(database_url)
+        script = ScriptDirectory.from_config(alembic_cfg)
+
+        engine = create_engine(database_url)
+        with engine.connect() as conn:
+            context = MigrationContext.configure(conn)
+            current_rev = context.get_current_revision()
+        engine.dispose()
+
+        # List all revisions in order
+        revisions = list(script.walk_revisions())
+        revisions.reverse()  # oldest first
+
+        # Build set of applied revisions by walking back from current
+        applied: set[str] = set()
+        if current_rev:
+            check = script.get_revision(current_rev)
+            while check is not None:
+                applied.add(check.revision)
+                down = check.down_revision
+                check = script.get_revision(down) if down else None
+
+        logger.info(f"📋 Found {len(revisions)} migration(s) in chain:")
+        for rev in revisions:
+            is_applied = rev.revision in applied
+            marker = "✅" if is_applied else "⏳"
+            label = "applied" if is_applied else "PENDING"
+            desc = rev.doc.split("\n")[0][:60] if rev.doc else "no description"
+            logger.info(f"  {marker} {rev.revision} - {desc} [{label}]")
+
+    except Exception as e:
+        logger.warning(f"⚠️ Could not list migrations: {e}")
+
+
 def run_migrations(database_url: str) -> None:
     """
     Run Alembic migrations to latest revision.
@@ -101,22 +174,7 @@ def run_migrations(database_url: str) -> None:
         SystemExit: If migrations fail.
     """
     try:
-        # Get path to alembic.ini relative to this file
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        alembic_ini = os.path.join(script_dir, "alembic.ini")
-
-        if not os.path.exists(alembic_ini):
-            logger.error(f"❌ alembic.ini not found at {alembic_ini}")
-            sys.exit(1)
-
-        # Create Alembic config
-        alembic_cfg = Config(alembic_ini)
-        alembic_cfg.set_main_option("sqlalchemy.url", database_url)
-
-        # Set script location relative to alembic.ini
-        alembic_cfg.set_main_option(
-            "script_location", os.path.join(script_dir, "migrations")
-        )
+        alembic_cfg = _get_alembic_config(database_url)
 
         logger.info("🚀 Running migrations...")
         command.upgrade(alembic_cfg, "head")
@@ -138,32 +196,121 @@ def get_current_revision(database_url: str) -> str | None:
         Current revision ID or None if no migrations applied.
     """
     try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        alembic_ini = os.path.join(script_dir, "alembic.ini")
-
-        alembic_cfg = Config(alembic_ini)
-        alembic_cfg.set_main_option("sqlalchemy.url", database_url)
-        alembic_cfg.set_main_option(
-            "script_location", os.path.join(script_dir, "migrations")
-        )
-
-        # Get current revision using Alembic's script directory
-        from alembic.script import ScriptDirectory
         from alembic.runtime.migration import MigrationContext
 
-        script = ScriptDirectory.from_config(alembic_cfg)
         engine = create_engine(database_url)
-
         with engine.connect() as conn:
             context = MigrationContext.configure(conn)
             current_rev = context.get_current_revision()
-
         engine.dispose()
         return current_rev
 
     except Exception as e:
-        logger.warning(f"Could not get current revision: {e}")
+        logger.warning(f"⚠️ Could not get current revision: {e}")
         return None
+
+
+def verify_schema(database_url: str) -> None:
+    """
+    Verify critical schema objects exist after migration.
+
+    Catches cases where alembic_version was stamped but DDL was not applied.
+    Fails hard so broken deployments don't silently start with missing schema.
+
+    Args:
+        database_url: PostgreSQL connection URL.
+
+    Raises:
+        SystemExit: If required schema objects are missing.
+    """
+    # Table -> list of required columns
+    required_schema: dict[str, list[str]] = {
+        "users": ["id", "email"],
+        "connectors": ["id", "team_id"],
+        "teams": ["id", "name"],
+        "team_members": ["team_id", "user_id"],
+        "llms": ["id", "provider", "model_id"],
+        "documents": ["id", "connector_id"],
+        "chat_sessions": ["id", "user_id"],
+    }
+
+    engine = create_engine(database_url)
+    errors: list[str] = []
+
+    try:
+        with engine.connect() as conn:
+            for table, columns in required_schema.items():
+                # Check table exists
+                result = conn.execute(
+                    text(
+                        "SELECT EXISTS ("
+                        "  SELECT 1 FROM information_schema.tables "
+                        "  WHERE table_schema = 'public' AND table_name = :name"
+                        ")"
+                    ),
+                    {"name": table},
+                )
+                if not result.scalar():
+                    errors.append(f"Table '{table}' does not exist")
+                    continue
+
+                # Check required columns
+                for col in columns:
+                    result = conn.execute(
+                        text(
+                            "SELECT EXISTS ("
+                            "  SELECT 1 FROM information_schema.columns "
+                            "  WHERE table_schema = 'public' "
+                            "    AND table_name = :table AND column_name = :col"
+                            ")"
+                        ),
+                        {"table": table, "col": col},
+                    )
+                    if not result.scalar():
+                        errors.append(
+                            f"Column '{table}.{col}' does not exist"
+                        )
+    finally:
+        engine.dispose()
+
+    if errors:
+        for err in errors:
+            logger.error(f"❌ Schema verification failed: {err}")
+        logger.error(
+            "💀 Database schema is out of sync with alembic_version. "
+            "Migrations were stamped but DDL was not applied."
+        )
+        sys.exit(1)
+
+    logger.info("✅ Schema verification passed")
+
+
+def ensure_langfuse_database(database_url: str) -> None:
+    """
+    Create the 'langfuse' database if it does not exist.
+
+    Connects to the 'postgres' maintenance database and issues
+    CREATE DATABASE langfuse. Gated by ENABLE_LANGFUSE env var.
+
+    Args:
+        database_url: PostgreSQL connection URL for the EchoMind database.
+    """
+    postgres_url = database_url.rsplit("/", 1)[0] + "/postgres"
+    engine = create_engine(postgres_url, isolation_level="AUTOCOMMIT")
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = 'langfuse'")
+            )
+            if result.fetchone() is None:
+                conn.execute(text("CREATE DATABASE langfuse"))
+                logger.info("🗄️ Langfuse database created")
+            else:
+                logger.info("🗄️ Langfuse database already exists")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not ensure langfuse database: {e}")
+    finally:
+        engine.dispose()
 
 
 def main() -> None:
@@ -183,15 +330,33 @@ def main() -> None:
     if not wait_for_db(database_url, retries=retry_count, delay=retry_delay):
         sys.exit(1)
 
+    # Ensure Langfuse database exists (if enabled)
+    enable_langfuse = os.getenv("ENABLE_LANGFUSE", "false").lower() == "true"
+    if enable_langfuse:
+        ensure_langfuse_database(database_url)
+
     # Log current state
     current_rev = get_current_revision(database_url)
     if current_rev:
-        logger.info(f"📍 Current revision: {current_rev}")
+        logger.info(f"📍 Current DB revision: {current_rev}")
     else:
         logger.info("📍 No migrations applied yet (fresh database)")
 
+    # Show all migrations and their status
+    log_available_migrations(database_url)
+
     # Run migrations
     run_migrations(database_url)
+
+    # Log post-migration state
+    new_rev = get_current_revision(database_url)
+    if new_rev != current_rev:
+        logger.info(f"📍 Upgraded: {current_rev} → {new_rev}")
+    else:
+        logger.info(f"📍 Already at latest revision: {new_rev}")
+
+    # Verify critical schema objects exist after migration
+    verify_schema(database_url)
 
     logger.info("🎉 Migration service completed")
 

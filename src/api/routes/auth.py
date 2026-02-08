@@ -1,8 +1,11 @@
 """Authentication endpoints."""
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
+
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,9 +55,10 @@ async def create_session(
         validator = get_jwt_validator()
         token_user = validator.validate_token(token)
     except Exception as e:
+        logger.info(f"🔒 Token validation failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {str(e)}",
+            detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

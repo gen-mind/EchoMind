@@ -27,6 +27,7 @@ from typing import Any
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from echomind_lib.constants import MinioBuckets
 from echomind_lib.db.connection import close_db, get_db_manager, init_db
 from echomind_lib.db.minio import close_minio, get_minio, init_minio
 from echomind_lib.db.nats_publisher import (
@@ -40,6 +41,8 @@ from echomind_lib.db.nats_subscriber import (
     init_nats_subscriber,
 )
 from echomind_lib.helpers.readiness_probe import HealthServer
+
+from echomind_lib.helpers.langfuse_helper import init_langfuse, shutdown_langfuse, create_trace
 
 from connector.config import get_settings
 from connector.logic.connector_service import ConnectorService
@@ -130,9 +133,10 @@ class ConnectorApp:
                 access_key=self._settings.minio_access_key,
                 secret_key=self._settings.minio_secret_key,
                 secure=self._settings.minio_secure,
+                ensure_buckets=MinioBuckets.all(),
             )
             self._minio_connected = True
-            logger.info("📦 MinIO connected")
+            logger.info(f"📦 MinIO connected (buckets: {MinioBuckets.all()})")
         except Exception as e:
             logger.warning(f"⚠️ MinIO connection failed: {e}")
             logger.info("🔄 Will retry MinIO connection in background...")
@@ -185,6 +189,9 @@ class ConnectorApp:
                 asyncio.create_task(self._retry_nats_sub_connection())
             )
 
+        # Initialize Langfuse (LLM observability)
+        init_langfuse()
+
         # Update readiness based on connection status
         self._update_readiness()
         self._running = True
@@ -219,9 +226,10 @@ class ConnectorApp:
                     access_key=self._settings.minio_access_key,
                     secret_key=self._settings.minio_secret_key,
                     secure=self._settings.minio_secure,
+                    ensure_buckets=MinioBuckets.all(),
                 )
                 self._minio_connected = True
-                logger.info("📦 MinIO reconnected")
+                logger.info(f"📦 MinIO reconnected (buckets: {MinioBuckets.all()})")
                 self._update_readiness()
             except Exception as e:
                 logger.warning(f"⚠️ MinIO reconnection attempt failed: {e}")
@@ -299,6 +307,9 @@ class ConnectorApp:
 
         subjects = [
             "connector.sync.google_drive",
+            "connector.sync.gmail",
+            "connector.sync.google_calendar",
+            "connector.sync.google_contacts",
             "connector.sync.onedrive",
         ]
 
@@ -339,6 +350,16 @@ class ConnectorApp:
             connector_id = request.connector_id
             logger.info(f"🔄 Received sync request for connector {connector_id}")
 
+            # Create Langfuse trace for this sync operation
+            trace = create_trace(
+                name="connector-sync",
+                metadata={
+                    "connector_id": connector_id,
+                    "chunking_session": request.chunking_session,
+                },
+                tags=["connector", "sync"],
+            )
+
             # Process sync
             db = get_db_manager()
             minio = get_minio()
@@ -356,6 +377,9 @@ class ConnectorApp:
                     docs_processed = await service.sync_connector(
                         connector_id=connector_id,
                         chunking_session=request.chunking_session,
+                    )
+                    trace.update(
+                        output={"documents_processed": docs_processed},
                     )
                     logger.info(
                         f"✅ Sync completed for connector {connector_id}: {docs_processed} documents"
@@ -410,6 +434,11 @@ class ConnectorApp:
         try:
             await close_db()
             logger.info("🗄️ Database disconnected")
+        except Exception:
+            pass
+
+        try:
+            shutdown_langfuse()
         except Exception:
             pass
 

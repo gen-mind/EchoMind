@@ -2,16 +2,16 @@
 APScheduler==3.10.4
 
 # Database
-sqlalchemy[asyncio]==2.0.35
-asyncpg==0.29.0
+sqlalchemy[asyncio]==2.0.45
+asyncpg==0.31.0
 
 # Data Validation
 pydantic==2.12.5
 pydantic-settings==2.12.0
 
 # Message Queue
-nats-py==2.9.0
+nats-py==2.12.0
 
 # Protobuf
-protobuf==5.28.2
+protobuf==5.29.5
 protobuf-pydantic-gen==0.1.8

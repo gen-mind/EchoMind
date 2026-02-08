@@ -19,6 +19,7 @@ from sqlalchemy import text
 
 from api.config import get_settings
 from api.middleware.error_handler import setup_error_handlers
+from api.middleware.metrics import router as metrics_router
 from api.routes import (
     assistants,
     auth,
@@ -26,20 +27,28 @@ from api.routes import (
     connectors,
     documents,
     embedding_models,
+    evaluation,
+    google_oauth,
     health,
     llms,
+    oauth,
+    projector,
     teams,
     upload,
     users,
+    webui_compat,
 )
 from api.logic.embedder_client import close_embedder_client, init_embedder_client
 from api.logic.llm_client import close_llm_client
+from api.socketio_server import socket_app
 from api.websocket.chat_handler import create_chat_handler
 from echomind_lib.db.connection import close_db, get_db_manager, init_db
+from echomind_lib.constants import MinioBuckets
 from echomind_lib.db.minio import close_minio, init_minio
 from echomind_lib.db.nats_publisher import close_nats_publisher, init_nats_publisher
 from echomind_lib.db.qdrant import close_qdrant, init_qdrant
 from echomind_lib.helpers.auth import init_jwt_validator
+from echomind_lib.helpers.langfuse_helper import init_langfuse, shutdown_langfuse
 from echomind_lib.helpers.readiness_probe import (
     HealthCheckResult,
     HealthStatus,
@@ -207,8 +216,10 @@ async def _retry_minio_connection(settings: Settings) -> None:
                 access_key=settings.minio_access_key,
                 secret_key=settings.minio_secret_key,
                 secure=settings.minio_secure,
+                ensure_buckets=MinioBuckets.all(),
+                public_endpoint=settings.minio_public_endpoint,
             )
-            logger.info("📦 MinIO reconnected")
+            logger.info(f"📦 MinIO reconnected (buckets: {MinioBuckets.all()})")
             break
         except Exception as e:
             logger.warning(f"⚠️ MinIO reconnection attempt failed: {e}")
@@ -228,6 +239,39 @@ async def _retry_nats_connection(settings: Settings) -> None:
             break
         except Exception as e:
             logger.warning(f"⚠️ NATS reconnection attempt failed: {e}")
+
+
+async def _retry_embedder_connection(settings: Settings) -> None:
+    """Background task to retry Embedder gRPC client connection."""
+    while True:
+        await asyncio.sleep(30)
+        try:
+            await init_embedder_client(
+                host=settings.embedder_host,
+                port=settings.embedder_port,
+                timeout=settings.embedder_timeout,
+            )
+            logger.info("🔗 Embedder gRPC client reconnected")
+            break
+        except Exception as e:
+            logger.warning(f"⚠️ Embedder client reconnection attempt failed: {e}")
+
+
+async def _retry_jwt_connection(settings: Settings) -> None:
+    """Background task to retry JWT validator initialization."""
+    while True:
+        await asyncio.sleep(30)
+        try:
+            init_jwt_validator(
+                issuer=settings.auth_issuer,
+                audience=settings.auth_audience,
+                jwks_url=settings.auth_jwks_url,
+                secret=settings.auth_secret,
+            )
+            logger.info("🔑 JWT validator reconnected")
+            break
+        except Exception as e:
+            logger.warning(f"⚠️ JWT validator reconnection attempt failed: {e}")
 
 
 @asynccontextmanager
@@ -279,8 +323,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             access_key=settings.minio_access_key,
             secret_key=settings.minio_secret_key,
             secure=settings.minio_secure,
+            ensure_buckets=MinioBuckets.all(),
+            public_endpoint=settings.minio_public_endpoint,
         )
-        logger.info("📦 MinIO connected")
+        logger.info(f"📦 MinIO connected (buckets: {MinioBuckets.all()})")
     except Exception as e:
         logger.warning(f"⚠️ MinIO initialization failed: {e}")
         logger.info("🔄 Will retry MinIO connection in background...")
@@ -296,6 +342,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("🔑 JWT validator initialized")
     except Exception as e:
         logger.warning(f"⚠️ JWT validator initialization failed: {e}")
+        logger.info("🔄 Will retry JWT validator in background...")
+        retry_tasks.append(asyncio.create_task(_retry_jwt_connection(settings)))
 
     try:
         await init_nats_publisher(
@@ -319,6 +367,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("🔗 Embedder gRPC client connected")
     except Exception as e:
         logger.warning(f"⚠️ Embedder client initialization failed: {e}")
+        logger.info("🔄 Will retry Embedder client in background...")
+        retry_tasks.append(asyncio.create_task(_retry_embedder_connection(settings)))
+
+    # Initialize Langfuse (LLM observability)
+    init_langfuse()
 
     # Register health checks for readiness probe
     _register_health_checks(settings.health_check_timeout)
@@ -366,6 +419,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:
         pass
 
+    try:
+        shutdown_langfuse()
+    except Exception:
+        pass
+
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
@@ -396,6 +454,16 @@ def create_app() -> FastAPI:
     # Register routers
     app.include_router(health.router, tags=["Health"])  # Root level for /health
     app.include_router(health.router, prefix="/api/v1", tags=["Health"])  # Versioned
+
+    # Open WebUI compatibility endpoints (without /v1 prefix)
+    # These enable the Open WebUI SvelteKit frontend to function with EchoMind backend
+    app.include_router(
+        webui_compat.router, prefix="/api", tags=["WebUI Compatibility"]
+    )
+
+    # OAuth endpoints for WebUI SSO login
+    # Mounted at /oauth (not /api/oauth) as expected by Open WebUI frontend
+    app.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
     app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
     app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
     app.include_router(
@@ -416,6 +484,16 @@ def create_app() -> FastAPI:
     )
     app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
     app.include_router(teams.router, prefix="/api/v1/teams", tags=["Teams"])
+    app.include_router(
+        google_oauth.router, prefix="/api/v1/google", tags=["Google OAuth"]
+    )
+    app.include_router(
+        projector.router, prefix="/api/v1/projector", tags=["Projector"]
+    )
+    app.include_router(
+        evaluation.router, prefix="/api/v1/evaluate", tags=["Evaluation"]
+    )
+    app.include_router(metrics_router, tags=["Metrics"])
 
     # WebSocket endpoint
     @app.websocket("/api/v1/ws/chat")
@@ -435,6 +513,12 @@ def create_app() -> FastAPI:
         async with db_manager.session() as db:
             handler = create_chat_handler(db)
             await handler.handle_connection(websocket, token)
+
+    # Mount Socket.IO for Open WebUI real-time communication
+    # Frontend connects with path: '/ws/socket.io', so mount at /ws
+    # and socketio_path is set in socket_app constructor
+    app.mount("/ws", socket_app)
+    logger.info("🌐 Socket.IO mounted at /ws (path: /ws/socket.io)")
 
     return app
 

@@ -1,11 +1,11 @@
 # EchoMind Guardian Service Dependencies
 
 # NATS JetStream
-nats-py>=2.6.0
+nats-py==2.12.0
 
 # HTTP client for webhooks (Slack, PagerDuty, generic webhooks)
-httpx>=0.27.0
+httpx==0.28.1
 
 # Configuration
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
+pydantic==2.12.5
+pydantic-settings==2.12.0

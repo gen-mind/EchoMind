@@ -54,6 +54,7 @@ class Orchestrator:
     Main orchestrator application.
 
     Manages lifecycle of scheduler, database, and NATS connections.
+    Implements graceful degradation: retries failed connections in background.
     """
 
     def __init__(self):
@@ -62,16 +63,28 @@ class Orchestrator:
         self._scheduler: AsyncIOScheduler | None = None
         self._health_server: HealthServer | None = None
         self._running = False
+        self._db_connected = False
+        self._nats_connected = False
+        self._retry_tasks: list[asyncio.Task] = []
+
+    def _is_ready(self) -> bool:
+        """Check if all required connections are established."""
+        return self._db_connected and self._nats_connected
+
+    def _update_readiness(self) -> None:
+        """Update health server readiness based on connection state."""
+        if self._health_server:
+            self._health_server.set_ready(self._is_ready())
 
     async def start(self) -> None:
         """
         Start the orchestrator service.
 
         Initializes:
-        - Database connection
-        - NATS publisher
-        - APScheduler
-        - Health check server
+        - Health check server (always starts first)
+        - Database connection (retries on failure)
+        - NATS publisher (retries on failure)
+        - APScheduler (starts immediately, jobs skip if not ready)
         """
         logger.info("🚀 EchoMind Orchestrator Service starting...")
         logger.info("📋 Configuration:")
@@ -85,6 +98,12 @@ class Orchestrator:
             logger.warning("⚠️ Orchestrator is disabled via configuration")
             return
 
+        # Start health server first (Kubernetes needs it)
+        self._health_server = HealthServer(port=self._settings.health_port)
+        health_thread = threading.Thread(target=self._health_server.start, daemon=True)
+        health_thread.start()
+        logger.info(f"💓 Health server started on port {self._settings.health_port}")
+
         # Initialize database
         logger.info("🛠️ Connecting to database...")
         try:
@@ -92,68 +111,29 @@ class Orchestrator:
                 self._settings.database_url,
                 echo=self._settings.database_echo,
             )
+            self._db_connected = True
             logger.info("🗄️ Database connected")
         except Exception as e:
-            logger.error(f"❌ Database connection failed: {e}")
-            raise
+            logger.warning(f"⚠️ Database connection failed: {e}")
+            logger.info("🔄 Will retry database connection in background...")
+            self._retry_tasks.append(
+                asyncio.create_task(self._retry_db_connection())
+            )
 
         # Initialize NATS publisher
         logger.info("🛠️ Connecting to NATS...")
         try:
-            publisher = await init_nats_publisher(
-                servers=[self._settings.nats_url],
-                user=self._settings.nats_user,
-                password=self._settings.nats_password,
-                timeout=self._settings.nats_connect_timeout,
-            )
+            await self._init_nats()
+            self._nats_connected = True
             logger.info("📡 NATS publisher connected")
-
-            # Create JetStream stream if it doesn't exist
-            try:
-                await publisher.create_stream(
-                    name=self._settings.nats_stream_name,
-                    subjects=[
-                        "connector.sync.*",
-                        "document.process",
-                    ],
-                )
-                logger.info(
-                    f"✅ NATS stream '{self._settings.nats_stream_name}' ready"
-                )
-            except Exception as e:
-                # Stream might already exist, which is fine
-                if "already in use" not in str(e).lower():
-                    logger.warning(f"⚠️ Stream creation warning: {e}")
-
-            # Create DLQ advisory stream for Guardian service
-            try:
-                await publisher.create_stream(
-                    name=self._settings.nats_dlq_stream_name,
-                    subjects=[
-                        f"$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.{self._settings.nats_stream_name}.>",
-                        f"$JS.EVENT.ADVISORY.CONSUMER.MSG_TERMINATED.{self._settings.nats_stream_name}.>",
-                    ],
-                )
-                logger.info(
-                    f"✅ NATS DLQ stream '{self._settings.nats_dlq_stream_name}' ready"
-                )
-            except Exception as e:
-                # Stream might already exist, which is fine
-                if "already in use" not in str(e).lower():
-                    logger.warning(f"⚠️ DLQ stream creation warning: {e}")
-
         except Exception as e:
-            logger.error(f"❌ NATS connection failed: {e}")
-            await close_db()
-            raise
+            logger.warning(f"⚠️ NATS connection failed: {e}")
+            logger.info("🔄 Will retry NATS connection in background...")
+            self._retry_tasks.append(
+                asyncio.create_task(self._retry_nats_connection())
+            )
 
-        # Start health server
-        self._health_server = HealthServer(port=self._settings.health_port)
-        health_thread = threading.Thread(target=self._health_server.start, daemon=True)
-        health_thread.start()
-        logger.info(f"💓 Health server started on port {self._settings.health_port}")
-
-        # Initialize scheduler
+        # Initialize scheduler (starts immediately — jobs check _is_ready())
         self._scheduler = AsyncIOScheduler()
         self._scheduler.add_job(
             self._sync_check_job,
@@ -167,16 +147,93 @@ class Orchestrator:
             f"🕐 Scheduler started (interval: {self._settings.check_interval_seconds} seconds)"
         )
 
-        # Mark as ready
-        self._health_server.set_ready(True)
+        # Update readiness
+        self._update_readiness()
         self._running = True
-        logger.info("🚀 Orchestrator ready")
+
+        if self._is_ready():
+            logger.info("🚀 Orchestrator ready")
+        else:
+            logger.warning("⚠️ Orchestrator started with degraded connectivity, retrying...")
+
+    async def _init_nats(self) -> None:
+        """
+        Initialize NATS publisher and create JetStream streams.
+
+        Raises:
+            Exception: If NATS connection fails.
+        """
+        publisher = await init_nats_publisher(
+            servers=[self._settings.nats_url],
+            user=self._settings.nats_user,
+            password=self._settings.nats_password,
+            timeout=self._settings.nats_connect_timeout,
+        )
+
+        # Create JetStream stream if it doesn't exist
+        try:
+            await publisher.create_stream(
+                name=self._settings.nats_stream_name,
+                subjects=[
+                    "connector.sync.*",
+                    "document.process",
+                ],
+            )
+            logger.info(
+                f"✅ NATS stream '{self._settings.nats_stream_name}' ready"
+            )
+        except Exception as e:
+            if "already in use" not in str(e).lower():
+                logger.warning(f"⚠️ Stream creation warning: {e}")
+
+        # Create DLQ advisory stream for Guardian service
+        try:
+            await publisher.create_stream(
+                name=self._settings.nats_dlq_stream_name,
+                subjects=[
+                    f"$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.{self._settings.nats_stream_name}.>",
+                    f"$JS.EVENT.ADVISORY.CONSUMER.MSG_TERMINATED.{self._settings.nats_stream_name}.>",
+                ],
+            )
+            logger.info(
+                f"✅ NATS DLQ stream '{self._settings.nats_dlq_stream_name}' ready"
+            )
+        except Exception as e:
+            if "already in use" not in str(e).lower():
+                logger.warning(f"⚠️ DLQ stream creation warning: {e}")
+
+    async def _retry_db_connection(self) -> None:
+        """Background task to retry database connection."""
+        while not self._db_connected:
+            await asyncio.sleep(30)
+            try:
+                await init_db(
+                    self._settings.database_url,
+                    echo=self._settings.database_echo,
+                )
+                self._db_connected = True
+                logger.info("🗄️ Database reconnected")
+                self._update_readiness()
+            except Exception as e:
+                logger.warning(f"⚠️ Database reconnection attempt failed: {e}")
+
+    async def _retry_nats_connection(self) -> None:
+        """Background task to retry NATS connection."""
+        while not self._nats_connected:
+            await asyncio.sleep(30)
+            try:
+                await self._init_nats()
+                self._nats_connected = True
+                logger.info("📡 NATS reconnected")
+                self._update_readiness()
+            except Exception as e:
+                logger.warning(f"⚠️ NATS reconnection attempt failed: {e}")
 
     async def stop(self) -> None:
         """
         Stop the orchestrator service gracefully.
 
-        Shuts down scheduler, closes database and NATS connections.
+        Cancels retry tasks, shuts down scheduler, closes connections.
         """
         logger.info("🛑 Orchestrator shutting down...")
         self._running = False
@@ -184,6 +241,10 @@ class Orchestrator:
         # Mark as not ready
         if self._health_server:
             self._health_server.set_ready(False)
+
+        # Cancel retry tasks
+        for task in self._retry_tasks:
+            task.cancel()
 
         # Stop scheduler
         if self._scheduler:
@@ -205,8 +266,9 @@ class Orchestrator:
         Job that checks for connectors due for sync.
 
         Called by APScheduler on the configured interval.
+        Skips execution if not all connections are ready.
         """
-        if not self._running:
+        if not self._running or not self._is_ready():
             return
 
         try:
@@ -255,9 +317,6 @@ async def main() -> None:
 
     except KeyboardInterrupt:
         logger.info("🛑 Received keyboard interrupt")
-    except Exception as e:
-        logger.exception(f"💀 Fatal error: {e}")
-        sys.exit(1)
     finally:
         await orchestrator.stop()
 

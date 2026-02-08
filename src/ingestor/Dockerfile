@@ -46,15 +46,18 @@ COPY echomind_lib /app/echomind_lib
 ENV PYTHONPATH="/app"
 
 # Pre-download the default tokenizer during build
-# Note: Set HF_TOKEN build arg if using gated models like Llama
+# CRITICAL: Must match INGESTOR_TOKENIZER in config (nvidia/llama-nemotron-embed-1b-v2)
+# Note: nvidia/llama-nemotron-embed-1b-v2 is publicly available (not gated)
 ARG HF_TOKEN=""
 RUN if [ -n "$HF_TOKEN" ]; then \
-    pip install --no-cache-dir huggingface_hub && \
-    python -c "from huggingface_hub import login; login(token='$HF_TOKEN')" && \
-    python -c "from transformers import AutoTokenizer; AutoTokenizer.from_pretrained('meta-llama/Llama-3.2-1B')"; \
+        echo "🔑 Using provided HF_TOKEN for authentication"; \
+        pip install --no-cache-dir huggingface_hub && \
+        python -c "from huggingface_hub import login; login(token='$HF_TOKEN')"; \
     else \
-    python -c "from transformers import AutoTokenizer; AutoTokenizer.from_pretrained('gpt2')"; \
-    fi
+        echo "ℹ️  No HF_TOKEN provided - downloading publicly available model"; \
+    fi && \
+    echo "📥 Pre-downloading tokenizer: nvidia/llama-nemotron-embed-1b-v2" && \
+    python -c "from transformers import AutoTokenizer; AutoTokenizer.from_pretrained('nvidia/llama-nemotron-embed-1b-v2')"
 
 # Set offline mode AFTER download to prevent runtime network calls
 ENV HF_HUB_OFFLINE=1
