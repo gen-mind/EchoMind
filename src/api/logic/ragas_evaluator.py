@@ -14,10 +14,19 @@ from __future__ import annotations
 import logging
 import os
 import random
+import time
 from dataclasses import dataclass
 from typing import Any
 
 from echomind_lib.helpers.langfuse_helper import is_langfuse_enabled, score_trace
+
+from api.middleware.metrics import (
+    ragas_context_precision,
+    ragas_evaluation_duration,
+    ragas_evaluations_total,
+    ragas_faithfulness,
+    ragas_response_relevancy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +146,7 @@ async def _run_evaluation(
         )
     except ImportError:
         logger.warning("⚠️ RAGAS package not installed, skipping evaluation")
+        ragas_evaluations_total.labels(status="skipped").inc()
         return EvalResult(trace_id=trace_id)
 
     # Build sample
@@ -164,6 +174,15 @@ async def _run_evaluation(
             ("response_relevancy", ResponseRelevancy(llm=llm_wrapper, embeddings=embeddings_wrapper))
         )
 
+    # Map metric names to Prometheus histograms
+    _prom_histograms = {
+        "faithfulness": ragas_faithfulness,
+        "response_relevancy": ragas_response_relevancy,
+        "context_precision": ragas_context_precision,
+    }
+
+    start_time = time.monotonic()
+
     for metric_name, metric in metrics_to_run:
         try:
             score = await metric.single_turn_ascore(sample)
@@ -172,6 +191,9 @@ async def _run_evaluation(
             if score_float is not None:
                 setattr(result, metric_name, score_float)
                 _push_score(trace_id, metric_name, score_float)
+                # Record in Prometheus histogram
+                if metric_name in _prom_histograms:
+                    _prom_histograms[metric_name].observe(score_float)
                 logger.debug(
                     f"📊 RAGAS {metric_name}={score_float:.3f} for trace {trace_id}"
                 )
@@ -180,6 +202,19 @@ async def _run_evaluation(
             logger.warning(
                 f"⚠️ RAGAS metric {metric_name} failed for trace {trace_id}: {e}"
             )
+
+    duration = time.monotonic() - start_time
+    ragas_evaluation_duration.observe(duration)
+
+    # Determine evaluation status
+    has_any_score = any(
+        getattr(result, name) is not None
+        for name in ("faithfulness", "response_relevancy", "context_precision")
+    )
+    if has_any_score:
+        ragas_evaluations_total.labels(status="success").inc()
+    else:
+        ragas_evaluations_total.labels(status="error").inc()
 
     faith = result.faithfulness or 0.0
     relevancy = f"{result.response_relevancy:.3f}" if result.response_relevancy is not None else "N/A"

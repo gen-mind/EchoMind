@@ -406,6 +406,7 @@ services:
       - ${CONFIG_PATH}/migration/migration.env
     environment:
       - MIGRATION_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${API_DB_NAME}
+      - ENABLE_LANGFUSE=${ENABLE_LANGFUSE:-false}
     depends_on:
       postgres:
         condition: service_healthy

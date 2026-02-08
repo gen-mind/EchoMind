@@ -285,6 +285,34 @@ def verify_schema(database_url: str) -> None:
     logger.info("✅ Schema verification passed")
 
 
+def ensure_langfuse_database(database_url: str) -> None:
+    """
+    Create the 'langfuse' database if it does not exist.
+
+    Connects to the 'postgres' maintenance database and issues
+    CREATE DATABASE langfuse. Gated by ENABLE_LANGFUSE env var.
+
+    Args:
+        database_url: PostgreSQL connection URL for the EchoMind database.
+    """
+    postgres_url = database_url.rsplit("/", 1)[0] + "/postgres"
+    engine = create_engine(postgres_url, isolation_level="AUTOCOMMIT")
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = 'langfuse'")
+            )
+            if result.fetchone() is None:
+                conn.execute(text("CREATE DATABASE langfuse"))
+                logger.info("🗄️ Langfuse database created")
+            else:
+                logger.info("🗄️ Langfuse database already exists")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not ensure langfuse database: {e}")
+    finally:
+        engine.dispose()
+
+
 def main() -> None:
     """
     Main entry point for migration service.
@@ -301,6 +329,11 @@ def main() -> None:
     # Wait for database
     if not wait_for_db(database_url, retries=retry_count, delay=retry_delay):
         sys.exit(1)
+
+    # Ensure Langfuse database exists (if enabled)
+    enable_langfuse = os.getenv("ENABLE_LANGFUSE", "false").lower() == "true"
+    if enable_langfuse:
+        ensure_langfuse_database(database_url)
 
     # Log current state
     current_rev = get_current_revision(database_url)

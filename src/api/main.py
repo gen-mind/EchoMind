@@ -19,6 +19,7 @@ from sqlalchemy import text
 
 from api.config import get_settings
 from api.middleware.error_handler import setup_error_handlers
+from api.middleware.metrics import router as metrics_router
 from api.routes import (
     assistants,
     auth,
@@ -492,6 +493,7 @@ def create_app() -> FastAPI:
     app.include_router(
         evaluation.router, prefix="/api/v1/evaluate", tags=["Evaluation"]
     )
+    app.include_router(metrics_router, tags=["Metrics"])
 
     # WebSocket endpoint
     @app.websocket("/api/v1/ws/chat")
