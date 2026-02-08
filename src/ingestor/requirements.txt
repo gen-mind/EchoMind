@@ -53,7 +53,7 @@ miniopy-async==1.23.4
 qdrant-client==1.16.2
 
 # LLM Observability
-langfuse>=3.13.0
+langfuse==3.13.0
 
 # Configuration
 pydantic==2.12.5
