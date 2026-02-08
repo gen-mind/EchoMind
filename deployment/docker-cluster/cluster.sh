@@ -330,6 +330,8 @@ restart_cluster() {
     log_info "Using down + up to ensure env vars are refreshed"
     echo ""
 
+    create_directories
+
     cd "$SCRIPT_DIR"
     docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE down
     docker compose -f "$COMPOSE_FILE" $OBSERVABILITY_FILES $OBSERVABILITY_PROFILE up -d
@@ -441,6 +443,8 @@ rebuild_service() {
     log_info "Mode: ${CYAN}${MODE}${NC} (${COMPOSE_FILE})"
     log_step "Rebuilding ${SERVICE} service..."
     echo ""
+
+    create_directories
 
     cd "$SCRIPT_DIR"
     # Pass HF_TOKEN as build arg if set (for model pre-download)
