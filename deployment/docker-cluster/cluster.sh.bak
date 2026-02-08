@@ -149,7 +149,7 @@ fi
 LANGFUSE_PROFILE=""
 LANGFUSE_FILES=""
 _langfuse_enabled=false
-if [ -f "$SCRIPT_DIR/.env" ] && (grep -Eq "^[[:space:]]*ENABLE_LANGFUSE[[:space:]]*=[[:space:]]*true" "$SCRIPT_DIR/.env" 2>/dev/null || grep -q "ENABLE_LANGFUSE=true" "$SCRIPT_DIR/.env" 2>/dev/null); then
+if [ -f "$SCRIPT_DIR/.env" ] && grep -q "^[[:space:]]*ENABLE_LANGFUSE[[:space:]]*=[[:space]]*true" "$SCRIPT_DIR/.env" 2>/dev/null; then
     _langfuse_enabled=true
 fi
 if [ "$_langfuse_enabled" = true ]; then
