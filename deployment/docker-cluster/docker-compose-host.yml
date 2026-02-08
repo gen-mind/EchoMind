@@ -349,6 +349,30 @@ services:
       - "traefik.http.services.nui.loadbalancer.server.port=31311"
 
   # ===============================================
+  # Redis - Shared Cache & Queue
+  # ===============================================
+  redis:
+    image: redis:7-alpine
+    container_name: echomind-redis
+    hostname: redis
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy noeviction
+      --save ""
+      --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=false"
+
+  # ===============================================
   # EchoMind API - FastAPI Application
   # ===============================================
   api:
@@ -385,6 +409,11 @@ services:
       - API_OAUTH_SCOPE=${WEB_OIDC_SCOPE:-openid profile email}
       - API_OAUTH_FRONTEND_URL=https://${DOMAIN}
       - API_OAUTH_COOKIE_DOMAIN=.${DOMAIN}
+      # Langfuse (optional - empty = disabled)
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_BASE_URL=http://langfuse-web:3000
+      - API_RAGAS_SAMPLE_RATE=${RAGAS_SAMPLE_RATE:-0.1}
     depends_on:
       postgres:
         condition: service_healthy
@@ -533,6 +562,10 @@ services:
       - CONNECTOR_MINIO_ENDPOINT=minio:9000
       - CONNECTOR_MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - CONNECTOR_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      # Langfuse (optional - empty = disabled)
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_BASE_URL=http://langfuse-web:3000
     depends_on:
       postgres:
         condition: service_healthy
@@ -574,6 +607,10 @@ services:
       - INGESTOR_QDRANT_PORT=6333
       - INGESTOR_EMBEDDER_HOST=embedder
       - INGESTOR_EMBEDDER_PORT=50051
+      # Langfuse (optional - empty = disabled)
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_BASE_URL=http://langfuse-web:3000
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
       interval: 30s

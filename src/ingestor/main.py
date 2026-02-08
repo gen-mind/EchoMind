@@ -35,6 +35,8 @@ from echomind_lib.models.internal.orchestrator_pb2 import (
 )
 from echomind_lib.models.public.connector_model import ConnectorScope
 
+from echomind_lib.helpers.langfuse_helper import init_langfuse, shutdown_langfuse, create_trace
+
 from ingestor.config import get_settings, IngestorSettings
 from ingestor.logic.exceptions import IngestorError
 from ingestor.logic.ingestor_service import IngestorService
@@ -193,6 +195,9 @@ class IngestorApp:
                 asyncio.create_task(self._retry_nats_connection())
             )
 
+        # Initialize Langfuse (LLM observability)
+        init_langfuse()
+
         # Update readiness based on connection status
         self._update_readiness()
         self._running = True
@@ -337,6 +342,17 @@ class IngestorApp:
 
             logger.debug(f"[id:{document_id}] NATS message received (path: {request.minio_path})")
 
+            # Create Langfuse trace for this document ingestion
+            trace = create_trace(
+                name="document-ingest",
+                metadata={
+                    "document_id": document_id,
+                    "chunking_session": request.chunking_session,
+                    "mime_type": request.minio_path.split(".")[-1] if "." in request.minio_path else "unknown",
+                },
+                tags=["ingestor", "document"],
+            )
+
             # Get database session and clients
             db = get_db_manager()
             minio = get_minio()
@@ -370,6 +386,14 @@ class IngestorApp:
                         scope=scope,
                         scope_id=request.scope_id or None,
                         team_id=request.team_id if request.team_id else None,
+                    )
+
+                    trace.update(
+                        output={
+                            "status": "completed",
+                            "chunk_count": result.get("chunk_count", 0),
+                            "collection_name": result.get("collection_name", ""),
+                        },
                     )
 
                     # ACK message on success
@@ -434,6 +458,11 @@ class IngestorApp:
         try:
             await close_db()
             logger.info("🗄️ Database disconnected")
+        except Exception:
+            pass
+
+        try:
+            shutdown_langfuse()
         except Exception:
             pass
 

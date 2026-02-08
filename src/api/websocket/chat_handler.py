@@ -8,6 +8,7 @@ Integrates with ChatService for retrieval-augmented generation.
 import asyncio
 import json
 import logging
+import time
 from enum import Enum
 from typing import Any
 
@@ -18,9 +19,11 @@ from api.logic.chat_service import ChatService, RetrievedSource
 from api.logic.embedder_client import get_embedder_client
 from api.logic.exceptions import NotFoundError, ServiceUnavailableError
 from api.logic.llm_client import get_llm_client
+from api.logic.ragas_evaluator import maybe_evaluate_async
 from api.websocket.manager import ConnectionManager, get_connection_manager
 from echomind_lib.db.qdrant import get_qdrant
 from echomind_lib.helpers.auth import TokenUser, get_jwt_validator
+from echomind_lib.helpers.langfuse_helper import create_trace
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +193,15 @@ class ChatHandler:
         3. Stream LLM response
         4. Save messages to database
         """
+        # Create Langfuse trace for this chat query
+        trace = create_trace(
+            name="chat-completion",
+            user_id=str(user.id),
+            session_id=str(session_id),
+            metadata={"mode": mode},
+            tags=["chat", mode],
+        )
+
         try:
             # Initialize service with dependencies
             service = ChatService(
@@ -218,7 +230,11 @@ class ChatHandler:
                 "rephrased_query": query,  # TODO: Implement query rephrasing
             })
 
-            # Retrieve relevant context
+            # Retrieve relevant context (with Langfuse span)
+            retrieval_span = trace.span(
+                name="retrieval",
+                input={"query": query, "limit": 5, "min_score": 0.4},
+            )
             try:
                 sources = await service.retrieve_context(
                     query=query,
@@ -226,7 +242,14 @@ class ChatHandler:
                     limit=5,
                     min_score=0.4,
                 )
+                retrieval_span.end(
+                    output={
+                        "source_count": len(sources),
+                        "scores": [s.score for s in sources],
+                    },
+                )
             except ServiceUnavailableError as e:
+                retrieval_span.end(output={"error": str(e)})
                 await self._send_error(
                     user.id,
                     "RETRIEVAL_ERROR",
@@ -271,10 +294,23 @@ class ChatHandler:
                 })
                 return
 
-            # Stream LLM response
+            # Stream LLM response (with Langfuse generation)
+            llm = session.assistant.llm if session.assistant else None
+            generation = trace.generation(
+                name="llm-completion",
+                model=llm.model_id if llm else "unknown",
+                input={"query": query, "source_count": len(sources)},
+                metadata={
+                    "provider": llm.provider if llm else "unknown",
+                    "temperature": float(llm.temperature) if llm else 0.0,
+                    "max_tokens": llm.max_tokens if llm else 0,
+                },
+            )
+
             response_content = ""
             token_count = 0
             current_task = asyncio.current_task()
+            generation_start = time.monotonic()
 
             try:
                 async for token in service.stream_response(
@@ -296,12 +332,20 @@ class ChatHandler:
                     })
 
             except ServiceUnavailableError as e:
+                generation.end(output={"error": str(e)})
                 await self._send_error(
                     user.id,
                     "GENERATION_ERROR",
                     f"LLM generation failed: {e.message}",
                 )
                 return
+
+            generation_elapsed = time.monotonic() - generation_start
+            generation.end(
+                output=response_content,
+                usage={"total_tokens": token_count},
+                metadata={"elapsed_seconds": round(generation_elapsed, 2)},
+            )
 
             # Save assistant message with sources
             assistant_message = await service.save_assistant_message(
@@ -328,11 +372,31 @@ class ChatHandler:
                 len(sources),
             )
 
+            # Fire async RAGAS evaluation (sampled, non-blocking)
+            context_texts = [s.content for s in sources]
+            llm_config = None
+            if llm:
+                llm_config = {
+                    "endpoint": llm.endpoint,
+                    "model_id": llm.model_id,
+                    "api_key": llm.api_key,
+                }
+            asyncio.create_task(
+                maybe_evaluate_async(
+                    trace_id=trace.id,
+                    query=query,
+                    response=response_content,
+                    contexts=context_texts,
+                    llm_config=llm_config,
+                )
+            )
+
         except asyncio.CancelledError:
             logger.info(f"🛑 Generation cancelled for user {user.id}")
             raise
         except Exception as e:
             logger.exception(f"❌ Error processing chat for user {user.id}: {e}")
+            trace.update(metadata={"error": True, "error_message": str(e)})
             await self._send_error(user.id, "GENERATION_ERROR", str(e))
         finally:
             if user.id in self._active_generations:

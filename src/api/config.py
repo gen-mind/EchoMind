@@ -147,6 +147,38 @@ class Settings(BaseSettings):
     embedder_port: int = Field(default=50051, description="Embedder gRPC port")
     embedder_timeout: float = Field(default=30.0, description="Embedder call timeout")
 
+    # Langfuse (LLM Observability)
+    langfuse_public_key: str | None = Field(
+        default=None,
+        description="Langfuse public API key",
+    )
+    langfuse_secret_key: str | None = Field(
+        default=None,
+        description="Langfuse secret API key",
+    )
+    langfuse_base_url: str = Field(
+        default="http://langfuse-web:3000",
+        description="Langfuse server URL",
+    )
+
+    # RAGAS Evaluation
+    ragas_sample_rate: float = Field(
+        default=0.1,
+        description="Fraction of chat requests to evaluate with RAGAS (0.0-1.0)",
+    )
+    ragas_eval_llm_model: str | None = Field(
+        default=None,
+        description="Override LLM model for RAGAS evaluation",
+    )
+    ragas_eval_llm_endpoint: str | None = Field(
+        default=None,
+        description="Override LLM endpoint for RAGAS evaluation",
+    )
+    ragas_eval_llm_api_key: str | None = Field(
+        default=None,
+        description="Override API key for RAGAS evaluation LLM",
+    )
+
     # CORS
     cors_origins: list[str] = Field(
         default=["http://localhost:3000"],

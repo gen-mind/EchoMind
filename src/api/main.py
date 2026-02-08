@@ -26,6 +26,7 @@ from api.routes import (
     connectors,
     documents,
     embedding_models,
+    evaluation,
     google_oauth,
     health,
     llms,
@@ -46,6 +47,7 @@ from echomind_lib.db.minio import close_minio, init_minio
 from echomind_lib.db.nats_publisher import close_nats_publisher, init_nats_publisher
 from echomind_lib.db.qdrant import close_qdrant, init_qdrant
 from echomind_lib.helpers.auth import init_jwt_validator
+from echomind_lib.helpers.langfuse_helper import init_langfuse, shutdown_langfuse
 from echomind_lib.helpers.readiness_probe import (
     HealthCheckResult,
     HealthStatus,
@@ -367,6 +369,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("🔄 Will retry Embedder client in background...")
         retry_tasks.append(asyncio.create_task(_retry_embedder_connection(settings)))
 
+    # Initialize Langfuse (LLM observability)
+    init_langfuse()
+
     # Register health checks for readiness probe
     _register_health_checks(settings.health_check_timeout)
 
@@ -410,6 +415,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     try:
         await close_llm_client()
+    except Exception:
+        pass
+
+    try:
+        shutdown_langfuse()
     except Exception:
         pass
 
@@ -478,6 +488,9 @@ def create_app() -> FastAPI:
     )
     app.include_router(
         projector.router, prefix="/api/v1/projector", tags=["Projector"]
+    )
+    app.include_router(
+        evaluation.router, prefix="/api/v1/evaluate", tags=["Evaluation"]
     )
 
     # WebSocket endpoint

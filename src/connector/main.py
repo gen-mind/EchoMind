@@ -42,6 +42,8 @@ from echomind_lib.db.nats_subscriber import (
 )
 from echomind_lib.helpers.readiness_probe import HealthServer
 
+from echomind_lib.helpers.langfuse_helper import init_langfuse, shutdown_langfuse, create_trace
+
 from connector.config import get_settings
 from connector.logic.connector_service import ConnectorService
 
@@ -186,6 +188,9 @@ class ConnectorApp:
             self._retry_tasks.append(
                 asyncio.create_task(self._retry_nats_sub_connection())
             )
+
+        # Initialize Langfuse (LLM observability)
+        init_langfuse()
 
         # Update readiness based on connection status
         self._update_readiness()
@@ -345,6 +350,16 @@ class ConnectorApp:
             connector_id = request.connector_id
             logger.info(f"🔄 Received sync request for connector {connector_id}")
 
+            # Create Langfuse trace for this sync operation
+            trace = create_trace(
+                name="connector-sync",
+                metadata={
+                    "connector_id": connector_id,
+                    "chunking_session": request.chunking_session,
+                },
+                tags=["connector", "sync"],
+            )
+
             # Process sync
             db = get_db_manager()
             minio = get_minio()
@@ -362,6 +377,9 @@ class ConnectorApp:
                     docs_processed = await service.sync_connector(
                         connector_id=connector_id,
                         chunking_session=request.chunking_session,
+                    )
+                    trace.update(
+                        output={"documents_processed": docs_processed},
                     )
                     logger.info(
                         f"✅ Sync completed for connector {connector_id}: {docs_processed} documents"
@@ -416,6 +434,11 @@ class ConnectorApp:
         try:
             await close_db()
             logger.info("🗄️ Database disconnected")
+        except Exception:
+            pass
+
+        try:
+            shutdown_langfuse()
         except Exception:
             pass
 

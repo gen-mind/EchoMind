@@ -7,6 +7,10 @@ CREATE DATABASE authentik;
 -- Create EchoMind API database
 CREATE DATABASE echomind;
 
+-- Create Langfuse database (LLM observability)
+CREATE DATABASE langfuse;
+
 -- Grant privileges (user already has superuser from POSTGRES_USER env var)
 GRANT ALL PRIVILEGES ON DATABASE authentik TO postgres;
 GRANT ALL PRIVILEGES ON DATABASE echomind TO postgres;
+GRANT ALL PRIVILEGES ON DATABASE langfuse TO postgres;

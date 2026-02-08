@@ -1,0 +1,11 @@
+# docker-compose-langfuse-host.yml
+# Production Traefik label overrides: HTTPS + letsencrypt
+
+services:
+  langfuse-web:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.langfuse.rule=Host(`langfuse.${DOMAIN}`)"
+      - "traefik.http.routers.langfuse.entrypoints=websecure"
+      - "traefik.http.routers.langfuse.tls.certresolver=letsencrypt"
+      - "traefik.http.services.langfuse.loadbalancer.server.port=3000"
