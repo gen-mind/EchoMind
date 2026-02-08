@@ -142,3 +142,10 @@ To enable SSO via Authentik:
    docker logs echomind-migration 2>&1 | grep -i langfuse
    # Expected: "Langfuse database created" or "Langfuse database already exists"
    ```
+
+## References
+
+- [Architecture](./architecture.md) - System overview with Langfuse in the observability layer
+- [API Service](./services/api-service.md) - Prometheus metrics and RAGAS evaluation details
+- [Migration Service](./services/migration-service.md) - Auto-creation of the Langfuse database
+- [API Specification](./api-spec.md) - Evaluation and metrics endpoints

@@ -50,6 +50,12 @@ flowchart TB
         subgraph Messaging
             NATS[NATS JetStream]
         end
+
+        subgraph Observability["Observability"]
+            LANGFUSE[Langfuse v3<br/>LLM Traces + RAGAS]
+            PROM[Prometheus]
+            GRAFANA[Grafana]
+        end
     end
 
     subgraph Inference["Inference Cluster (Pluggable)"]
@@ -84,6 +90,11 @@ flowchart TB
 
     LLM_ROUTER --> PRIVATE_LLM
     LLM_ROUTER --> CLOUD_LLM
+
+    API -->|traces + scores| LANGFUSE
+    CONN -->|traces| LANGFUSE
+    API -->|/metrics| PROM
+    PROM --> GRAFANA
 ```
 
 > **Authentication Flow**: Clients authenticate with Authentik (OIDC) first, receive a JWT token, then include it in requests to the API Gateway. The gateway validates the token before forwarding to backend services. This follows the [OAuth 2.0 Resource Server pattern](https://www.solo.io/topics/api-gateway/api-gateway-authentication).
@@ -391,7 +402,7 @@ flowchart TB
 
 | Service | Protocol | Port | Purpose |
 |---------|----------|------|---------|
-| **echomind-api** | HTTP/WebSocket | 8080 | REST API gateway, WebSocket streaming, serves web client |
+| **echomind-api** | HTTP/WebSocket | 8080 | REST API gateway, WebSocket streaming, Prometheus metrics (`/metrics`), RAGAS batch evaluation |
 | **echomind-search** | gRPC | 50051 | Agentic search powered by Semantic Kernel. Handles query planning, multi-step retrieval, tool execution, memory management, and LLM response generation. **Note:** Reranker may become a separate service in the future. |
 | **echomind-orchestrator** | NATS (pub) | 8080 | APScheduler-based service that monitors connectors and triggers sync jobs via NATS. See [orchestrator-service.md](./services/orchestrator-service.md). |
 | **echomind-connector** | NATS (sub/pub) | 8080 | Fetches data from external sources (Teams, OneDrive, Google Drive). Handles OAuth, delta sync, and file download to MinIO. |
@@ -399,7 +410,7 @@ flowchart TB
 | **echomind-embedder** | gRPC | 50051 | Generates vector embeddings using SentenceTransformers. Supports model caching. |
 | **echomind-voice** | NATS (sub) | 8080 | Whisper-based audio transcription for audio files (MP3, WAV). Outputs transcript to semantic service. |
 | **echomind-vision** | NATS (sub) | 8080 | BLIP image captioning + OCR for standalone images and video frame extraction. Outputs descriptions to semantic service. |
-| **echomind-migration** | Batch job | - | Alembic-based database schema versioning. Runs before service startup. |
+| **echomind-migration** | Batch job | - | Alembic-based database schema versioning. Runs before service startup. Auto-creates Langfuse database when `ENABLE_LANGFUSE=true`. |
 | **echomind-guardian** | NATS (sub) | 8080 | Monitors Dead-Letter Queue for failed messages. Sends alerts via configurable alerters (Slack, PagerDuty, logging). Ensures no message is silently lost. |
 
 ---
@@ -423,18 +434,18 @@ flowchart TB
 
 #### Data Access Matrix
 
-| Service | PostgreSQL | Qdrant | Redis | MinIO | External APIs |
-|---------|------------|--------|-------|-------|---------------|
-| **api** | R/W (users, connectors, documents, assistants, llms, chat_sessions, chat_messages) | - | - | - | - |
-| **search** | R (chat_sessions, chat_messages, assistants, llms) | R (vector search) | R/W (memory) | - | LLM Router |
-| **orchestrator** | R/W (connectors, apscheduler_jobs, scheduler_runs) | - | - | - | - |
-| **connector** | R/W (connectors, documents) | - | - | W (file upload) | MS Graph, Google Drive API |
-| **semantic** | R/W (documents, connectors) | - | - | R (file download) | - |
-| **embedder** | - | W (vector upsert) | - | - | - |
-| **voice** | W (documents.content) | - | - | R (audio download) | - |
-| **vision** | W (documents.content) | - | - | R (image download) | - |
-| **guardian** | - (optional: dlq_failures) | - | - | - | Slack, PagerDuty (alerts) |
-| **migration** | W (schema DDL) | - | - | - | - |
+| Service | PostgreSQL | Qdrant | Redis | MinIO | Langfuse | External APIs |
+|---------|------------|--------|-------|-------|----------|---------------|
+| **api** | R/W (users, connectors, documents, assistants, llms, chat_sessions, chat_messages) | - | - | - | W (traces, RAGAS scores) | - |
+| **search** | R (chat_sessions, chat_messages, assistants, llms) | R (vector search) | R/W (memory) | - | - | LLM Router |
+| **orchestrator** | R/W (connectors, apscheduler_jobs, scheduler_runs) | - | - | - | - | - |
+| **connector** | R/W (connectors, documents) | - | - | W (file upload) | W (traces) | MS Graph, Google Drive API |
+| **semantic** | R/W (documents, connectors) | - | - | R (file download) | - | - |
+| **embedder** | - | W (vector upsert) | - | - | - | - |
+| **voice** | W (documents.content) | - | - | R (audio download) | - | - |
+| **vision** | W (documents.content) | - | - | R (image download) | - | - |
+| **guardian** | - (optional: dlq_failures) | - | - | - | - | Slack, PagerDuty (alerts) |
+| **migration** | W (schema DDL, langfuse DB) | - | - | - | - | - |
 
 #### NATS Message Flow (In Order)
 
@@ -559,7 +570,8 @@ Step  Publisher      Subject                    Consumer       Trigger
 | **LLM Private** | TGI / vLLM | Production-grade inference, GPU optimized |
 | **LLM Cloud** | OpenAI / Anthropic | Optional, for connected deployments |
 | **Auth** | Authentik | SSO, OIDC, self-hosted, inside cluster |
-| **Observability** | OpenTelemetry + Grafana | Traces, metrics, logs |
+| **Observability** | Prometheus + Grafana + Loki | Metrics, dashboards, logs |
+| **LLM Observability** | Langfuse v3 | LLM traces, RAGAS scores, prompt versioning |
 
 ### ⚠️ Object Storage Warning: MinIO
 
@@ -885,5 +897,6 @@ Current approach: reranking logic lives in `echomind-search` service.
 - [DB Schema](./db-schema.md) - PostgreSQL table definitions
 - [API Specification](./api-spec.md) - REST/WebSocket endpoints
 - [NATS Messaging](./nats-messaging.md) - Message flow and stream configuration
+- [Langfuse Setup](./langfuse-setup.md) - LLM observability and RAGAS evaluation setup
 - [Orchestrator Service](./services/orchestrator-service.md) - Scheduler service details
 - [Guardian Service](./services/guardian-service.md) - DLQ monitoring and alerting

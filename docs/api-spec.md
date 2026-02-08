@@ -358,6 +358,54 @@ Individual messages within sessions.
 
 ---
 
+### 9. Evaluation
+
+RAGAS batch evaluation for RAG quality assessment. Admin only.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/evaluate/batch` | Run batch RAGAS evaluation on recent sessions |
+
+#### Batch Evaluation Request
+
+```json
+{
+  "limit": 50,
+  "min_messages": 2
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `limit` | int | 50 | Max sessions to evaluate (1-500) |
+| `min_messages` | int | 2 | Min messages in session to be eligible (>= 2) |
+
+#### Batch Evaluation Response
+
+```json
+{
+  "evaluated": 42,
+  "skipped": 6,
+  "errors": 2
+}
+```
+
+Requires Langfuse to be enabled. Returns all sessions as `skipped` when Langfuse is disabled.
+
+---
+
+### 10. Metrics
+
+Prometheus metrics endpoint (no authentication required).
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/metrics` | Prometheus text format metrics |
+
+Returns RAGAS score histograms, evaluation counters, and duration metrics. See [API Service - Prometheus Metrics](./services/api-service.md#prometheus-metrics) for metric details.
+
+---
+
 ## WebSocket API
 
 ### Connection
