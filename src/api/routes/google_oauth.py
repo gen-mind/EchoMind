@@ -22,7 +22,7 @@ from urllib.parse import urlencode
 import httpx
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from api.config import get_settings
@@ -97,6 +97,17 @@ class GoogleAuthUrlResponse(BaseModel):
     """Response model for Google auth URL."""
 
     url: str
+
+
+class GoogleOAuthConfiguredResponse(BaseModel):
+    """Response model for OAuth configuration status check.
+
+    Used by /auth/configured endpoint to inform frontend whether
+    Google OAuth is properly configured on the backend.
+    """
+
+    configured: bool = Field(..., description="True if all OAuth vars are set")
+    message: str | None = Field(None, description="Error message if not configured")
 
 
 @router.get("/auth/url", response_model=GoogleAuthUrlResponse)
@@ -444,3 +455,58 @@ def _cleanup_expired_states() -> None:
     ]
     for key in expired:
         _google_oauth_states.pop(key, None)
+
+
+@router.get("/auth/configured", response_model=GoogleOAuthConfiguredResponse)
+async def google_oauth_configured() -> GoogleOAuthConfiguredResponse:
+    """
+    Check if Google OAuth is properly configured on the backend.
+
+    Public endpoint (no authentication required) so frontend can query
+    configuration status before showing Google connector options to users.
+
+    Returns:
+        GoogleOAuthConfiguredResponse: Configuration status with configured flag and
+            optional error message.
+
+    Examples:
+        >>> # When configured
+        >>> GET /api/v1/google/auth/configured
+        >>> {"configured": true, "message": null}
+
+        >>> # When not configured
+        >>> GET /api/v1/google/auth/configured
+        >>> {
+        >>>   "configured": false,
+        >>>   "message": "Google OAuth not configured. Admin must set..."
+        >>> }
+
+    References:
+        - OAuth 2.0 Best Practices:
+          https://developers.google.com/identity/protocols/oauth2/resources/best-practices
+    """
+    settings = get_settings()
+
+    # Check if all required OAuth variables are present
+    configured = bool(
+        settings.google_client_id
+        and settings.google_client_secret
+        and settings.google_redirect_uri
+    )
+
+    if not configured:
+        logger.warning(
+            "⚠️ Google OAuth not configured. Missing environment variables: "
+            f"GOOGLE_CLIENT_ID={'set' if settings.google_client_id else 'MISSING'}, "
+            f"GOOGLE_CLIENT_SECRET={'set' if settings.google_client_secret else 'MISSING'}, "
+            f"GOOGLE_REDIRECT_URI={'set' if settings.google_redirect_uri else 'MISSING'}"
+        )
+        return GoogleOAuthConfiguredResponse(
+            configured=False,
+            message=(
+                "Google OAuth not configured. Admin must set GOOGLE_CLIENT_ID, "
+                "GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI in backend .env"
+            ),
+        )
+
+    return GoogleOAuthConfiguredResponse(configured=True, message=None)
