@@ -151,6 +151,115 @@ def _mock_token_exchange(
     mock_client_cls.return_value = mock_client
 
 
+class TestGoogleOAuthConfigured:
+    """Tests for GET /auth/configured endpoint."""
+
+    def test_configured_returns_true_when_all_vars_set(
+        self, client: TestClient
+    ) -> None:
+        """
+        Test endpoint returns configured=true when all OAuth vars are set.
+
+        Given: All required Google OAuth environment variables are configured
+        When: GET /google/auth/configured
+        Then: Returns {"configured": true}
+        """
+        with patch("api.routes.google_oauth.get_settings") as mock_settings:
+            mock_settings.return_value = _mock_settings()
+
+            response = client.get("/google/auth/configured")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["configured"] is True
+        assert "message" not in data or data.get("message") is None
+
+    def test_configured_returns_false_when_client_id_missing(
+        self, client: TestClient
+    ) -> None:
+        """
+        Test endpoint returns configured=false when CLIENT_ID is missing.
+
+        Given: GOOGLE_CLIENT_ID is not set
+        When: GET /google/auth/configured
+        Then: Returns {"configured": false, "message": "..."}
+        """
+        with patch("api.routes.google_oauth.get_settings") as mock_settings:
+            mock_settings.return_value = _mock_settings(google_client_id=None)
+
+            response = client.get("/google/auth/configured")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["configured"] is False
+        assert "Google OAuth not configured" in data["message"]
+        assert "GOOGLE_CLIENT_ID" in data["message"]
+
+    def test_configured_returns_false_when_client_secret_missing(
+        self, client: TestClient
+    ) -> None:
+        """Test endpoint returns false when CLIENT_SECRET is missing."""
+        with patch("api.routes.google_oauth.get_settings") as mock_settings:
+            mock_settings.return_value = _mock_settings(google_client_secret=None)
+
+            response = client.get("/google/auth/configured")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["configured"] is False
+        assert "message" in data
+
+    def test_configured_returns_false_when_redirect_uri_missing(
+        self, client: TestClient
+    ) -> None:
+        """Test endpoint returns false when REDIRECT_URI is missing."""
+        with patch("api.routes.google_oauth.get_settings") as mock_settings:
+            mock_settings.return_value = _mock_settings(google_redirect_uri=None)
+
+            response = client.get("/google/auth/configured")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["configured"] is False
+        assert "message" in data
+
+    def test_configured_returns_false_when_all_vars_missing(
+        self, client: TestClient
+    ) -> None:
+        """Test endpoint returns false when no OAuth vars are set."""
+        with patch("api.routes.google_oauth.get_settings") as mock_settings:
+            mock_settings.return_value = _mock_settings(
+                google_client_id=None,
+                google_client_secret=None,
+                google_redirect_uri=None,
+            )
+
+            response = client.get("/google/auth/configured")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["configured"] is False
+        assert "message" in data
+
+    def test_configured_returns_false_with_empty_strings(
+        self, client: TestClient
+    ) -> None:
+        """Test endpoint treats empty strings as not configured."""
+        with patch("api.routes.google_oauth.get_settings") as mock_settings:
+            mock_settings.return_value = _mock_settings(
+                google_client_id="",
+                google_client_secret="",
+                google_redirect_uri="",
+            )
+
+            response = client.get("/google/auth/configured")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["configured"] is False
+        assert "message" in data
+
+
 class TestGoogleAuthUrl:
     """Tests for GET /auth/url endpoint."""
 
