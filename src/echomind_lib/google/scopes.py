@@ -8,19 +8,19 @@ from __future__ import annotations
 
 
 # Per-service scope definitions
+# NOTE: Using read-write scopes for AI agent that helps organize user's work
 GOOGLE_SCOPES: dict[str, list[str]] = {
     "drive": [
-        "https://www.googleapis.com/auth/drive.readonly",
-        "https://www.googleapis.com/auth/drive.metadata.readonly",
+        "https://www.googleapis.com/auth/drive",  # Full Drive access (create/edit files, organize)
     ],
     "gmail": [
-        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.modify",  # Read/write emails, organize inbox
     ],
     "calendar": [
-        "https://www.googleapis.com/auth/calendar.readonly",
+        "https://www.googleapis.com/auth/calendar",  # Full calendar access (create/edit events)
     ],
     "contacts": [
-        "https://www.googleapis.com/auth/contacts.readonly",
+        "https://www.googleapis.com/auth/contacts",  # Read/write contacts
     ],
 }
 

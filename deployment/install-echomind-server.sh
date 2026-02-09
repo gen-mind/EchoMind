@@ -232,7 +232,12 @@ validate_config() {
     ECHOMIND_WEBUI_REPO="${ECHOMIND_WEBUI_REPO:-https://github.com/gen-mind/echomind-webui.git}"
     ECHOMIND_BRANCH="${ECHOMIND_BRANCH:-main}"
     ECHOMIND_WEBUI_BRANCH="${ECHOMIND_WEBUI_BRANCH:-main}"
+    # Docker version pinning (all components must match for stability)
+    # Pinned to prevent auto-upgrades that may break IDE integrations (PyCharm, VSCode)
     DOCKER_VERSION="${DOCKER_VERSION:-5:28.5.2-1~ubuntu.24.04~noble}"
+    DOCKER_CE_ROOTLESS_VERSION="${DOCKER_CE_ROOTLESS_VERSION:-5:28.5.2-1~ubuntu.24.04~noble}"
+    CONTAINERD_VERSION="${CONTAINERD_VERSION:-2.2.1-1~ubuntu.24.04~noble}"
+    DOCKER_COMPOSE_PLUGIN_VERSION="${DOCKER_COMPOSE_PLUGIN_VERSION:-5.0.2-1~ubuntu.24.04~noble}"
     ECHOMIND_VERSION="${ECHOMIND_VERSION:-0.1.0-beta.5}"
 
     if [ $errors -gt 0 ]; then
@@ -344,16 +349,17 @@ install_docker() {
             tee /etc/apt/sources.list.d/docker.list > /dev/null
     fi
 
-    # Update and install Docker (pinned version for PyCharm compatibility)
+    # Update and install Docker (pinned versions to prevent auto-upgrades)
     apt-get update
     apt-get install -y \
         docker-ce="${DOCKER_VERSION}" \
         docker-ce-cli="${DOCKER_VERSION}" \
-        containerd.io \
-        docker-compose-plugin
+        docker-ce-rootless-extras="${DOCKER_CE_ROOTLESS_VERSION}" \
+        containerd.io="${CONTAINERD_VERSION}" \
+        docker-compose-plugin="${DOCKER_COMPOSE_PLUGIN_VERSION}"
 
-    # Hold version to prevent auto-upgrade
-    apt-mark hold docker-ce docker-ce-cli
+    # Hold ALL Docker packages to prevent auto-upgrade
+    apt-mark hold docker-ce docker-ce-cli docker-ce-rootless-extras containerd.io docker-compose-plugin
 
     # Add root to docker group
     usermod -aG docker root || true
@@ -375,6 +381,66 @@ test_docker() {
         log_error "Docker test failed"
         exit 1
     fi
+}
+
+verify_docker_versions() {
+    log_step "Verifying Docker package versions and holds..."
+
+    local errors=0
+
+    # Check installed versions
+    local installed_docker_ce=$(dpkg -l | grep "^ii.*docker-ce " | awk '{print $3}')
+    local installed_docker_ce_cli=$(dpkg -l | grep "^ii.*docker-ce-cli " | awk '{print $3}')
+    local installed_rootless=$(dpkg -l | grep "^ii.*docker-ce-rootless-extras " | awk '{print $3}')
+    local installed_containerd=$(dpkg -l | grep "^ii.*containerd.io " | awk '{print $3}')
+    local installed_compose=$(dpkg -l | grep "^ii.*docker-compose-plugin " | awk '{print $3}')
+
+    # Verify versions match
+    if [ "$installed_docker_ce" != "$DOCKER_VERSION" ]; then
+        log_error "docker-ce version mismatch: expected $DOCKER_VERSION, got $installed_docker_ce"
+        ((errors++))
+    fi
+
+    if [ "$installed_docker_ce_cli" != "$DOCKER_VERSION" ]; then
+        log_error "docker-ce-cli version mismatch: expected $DOCKER_VERSION, got $installed_docker_ce_cli"
+        ((errors++))
+    fi
+
+    if [ "$installed_rootless" != "$DOCKER_CE_ROOTLESS_VERSION" ]; then
+        log_error "docker-ce-rootless-extras version mismatch: expected $DOCKER_CE_ROOTLESS_VERSION, got $installed_rootless"
+        ((errors++))
+    fi
+
+    if [ "$installed_containerd" != "$CONTAINERD_VERSION" ]; then
+        log_error "containerd.io version mismatch: expected $CONTAINERD_VERSION, got $installed_containerd"
+        ((errors++))
+    fi
+
+    if [ "$installed_compose" != "$DOCKER_COMPOSE_PLUGIN_VERSION" ]; then
+        log_error "docker-compose-plugin version mismatch: expected $DOCKER_COMPOSE_PLUGIN_VERSION, got $installed_compose"
+        ((errors++))
+    fi
+
+    # Verify packages are held
+    local held_packages=$(apt-mark showhold)
+    for pkg in docker-ce docker-ce-cli docker-ce-rootless-extras containerd.io docker-compose-plugin; do
+        if ! echo "$held_packages" | grep -q "^${pkg}$"; then
+            log_error "Package $pkg is not held"
+            ((errors++))
+        fi
+    done
+
+    if [ $errors -gt 0 ]; then
+        log_error "Docker version verification failed with $errors error(s)"
+        exit 1
+    fi
+
+    log_success "All Docker packages verified:"
+    log "  docker-ce:                  $installed_docker_ce (held)"
+    log "  docker-ce-cli:              $installed_docker_ce_cli (held)"
+    log "  docker-ce-rootless-extras:  $installed_rootless (held)"
+    log "  containerd.io:              $installed_containerd (held)"
+    log "  docker-compose-plugin:      $installed_compose (held)"
 }
 
 # ===============================================
@@ -820,6 +886,7 @@ main() {
     if [ "${SKIP_DOCKER_INSTALL}" = "false" ]; then
         install_docker
         test_docker
+        verify_docker_versions
     else
         log_skip "Docker installation skipped (SKIP_DOCKER_INSTALL=true)"
     fi

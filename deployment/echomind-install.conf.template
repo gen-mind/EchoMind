@@ -114,8 +114,13 @@ INSTALL_DIR="/root"
 # Timezone
 TZ="Europe/Zurich"
 
-# Docker version (pinned for PyCharm compatibility)
+# Docker version pinning (prevents auto-upgrades that break IDE integrations)
+# All docker-ce* packages MUST use the same version for compatibility
+# Tested and verified on: demo.echomind.ch (2026-02-09)
 DOCKER_VERSION="5:28.5.2-1~ubuntu.24.04~noble"
+DOCKER_CE_ROOTLESS_VERSION="5:28.5.2-1~ubuntu.24.04~noble"
+CONTAINERD_VERSION="2.2.1-1~ubuntu.24.04~noble"
+DOCKER_COMPOSE_PLUGIN_VERSION="5.0.2-1~ubuntu.24.04~noble"
 
 # EchoMind version
 ECHOMIND_VERSION="0.1.0-beta.5"
