@@ -159,81 +159,27 @@ EchoMind uses **Semantic Kernel's multi-agent orchestration** with the [**Magent
 
 ```mermaid
 flowchart TB
-  %% =========================
-  %% Multi-Agent Architecture (narrower)
-  %% =========================
-
-  subgraph User["👤 User Interface"]
-    direction TB
-    CLIENT[Web / API / Bot]
-  end
-
-  subgraph AgentCore["🧠 Agent Core - Semantic Kernel"]
-    direction TB
-
-    MANAGER[🎯 Manager Agent<br/>Magentic Coordinator]
-
-    subgraph Agents["Specialist Agents"]
-      direction TB
-      RETRIEVAL[🔍 Retrieval Agent<br/>Search & Context]
-      ANALYSIS[📊 Analysis Agent<br/>Data Processing]
-      SYNTHESIS[✍️ Synthesis Agent<br/>Answer Generation]
-      TOOL[🛠️ Tool Agent<br/>Actions & Execution]
-    end
-
-    subgraph Skills["Skills & Tools"]
-      direction TB
-      VSEARCH[Vector Search]
-      WEBSEARCH[Web Search]
-      CALC[Calculator]
-      DATETIME[Date/Time]
-      EXECUTOR[Code Executor]
-    end
-
-    subgraph REAC["REAC Loop - Each Agent"]
-      direction LR
-      THINK[💭 Think<br/>Plan Strategy] --> ACT[⚡ Act<br/>Execute/Retrieve] --> OBSERVE[👁️ Observe<br/>Collect Results]
-      OBSERVE --> REFLECT[🤔 Reflect<br/>Evaluate Quality] --> EVALUATE[⚖️ Evaluate<br/>Sufficient?]
-      EVALUATE -->|No| THINK
-      EVALUATE -->|Yes| ANSWER[💬 Answer<br/>Generate Response]
-    end
-  end
-
-  %% Data sources tightened + VERTICAL connectors list
   subgraph DataSources["📁 Data Sources"]
-    direction TB
-
     subgraph Connectors["Enterprise Connectors (examples)"]
-      direction TB
+      %% Force vertical ordering via invisible links
       SALES["💼 Sales & CRM<br/>Salesforce • HubSpot"]
       COLLAB["💬 Communication<br/>Teams • Slack"]
       DOCS["📚 Knowledge<br/>SharePoint • Confluence"]
       TICKETS["🎫 Ticketing<br/>Jira • Zendesk"]
       FILES["☁️ Cloud Storage<br/>Drive • OneDrive"]
       ERP["🏢 ERP & Finance<br/>SAP • Workday"]
+
+      SALES ~~~ COLLAB
+      COLLAB ~~~ DOCS
+      DOCS ~~~ TICKETS
+      TICKETS ~~~ FILES
+      FILES ~~~ ERP
     end
 
     VECTORDB[(Qdrant<br/>Vector Store)]
     RDBMS[(PostgreSQL<br/>Metadata)]
   end
 
-  %% Flow
-  CLIENT --> MANAGER
-
-  MANAGER -.->|Coordinates| RETRIEVAL
-  MANAGER -.->|Coordinates| ANALYSIS
-  MANAGER -.->|Coordinates| SYNTHESIS
-  MANAGER -.->|Coordinates| TOOL
-
-  RETRIEVAL & ANALYSIS & SYNTHESIS & TOOL -.->|Uses| Skills
-  Agents -->|Query Data| DataSources
-
-  %% Styling
-  style MANAGER fill:#ff9800,stroke:#e65100,stroke-width:3px
-  style REAC fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
-  style DataSources fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-  style AgentCore fill:#fff3e0,stroke:#e65100,stroke-width:2px
-  style Connectors fill:#ffffff,stroke:#7b1fa2,stroke-width:1px
 
 ```
 
