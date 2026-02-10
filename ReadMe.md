@@ -159,74 +159,82 @@ EchoMind uses **Semantic Kernel's multi-agent orchestration** with the [**Magent
 
 ```mermaid
 flowchart TB
-    subgraph User["👤 User Interface"]
-        CLIENT[Web/API/Bot]
+  %% =========================
+  %% Multi-Agent Architecture (narrower)
+  %% =========================
+
+  subgraph User["👤 User Interface"]
+    CLIENT[Web / API / Bot]
+  end
+
+  subgraph AgentCore["🧠 Agent Core - Semantic Kernel"]
+    MANAGER[🎯 Manager Agent<br/>Magentic Coordinator]
+
+    subgraph Agents["Specialist Agents"]
+      RETRIEVAL[🔍 Retrieval Agent<br/>Search & Context]
+      ANALYSIS[📊 Analysis Agent<br/>Data Processing]
+      SYNTHESIS[✍️ Synthesis Agent<br/>Answer Generation]
+      TOOL[🛠️ Tool Agent<br/>Actions & Execution]
     end
 
-    subgraph AgentCore["🧠 Agent Core - Semantic Kernel"]
-        MANAGER[🎯 Manager Agent<br/>Magentic Coordinator]
-
-        subgraph Agents["Specialist Agents"]
-            RETRIEVAL[🔍 Retrieval Agent<br/>Search & Context]
-            ANALYSIS[📊 Analysis Agent<br/>Data Processing]
-            SYNTHESIS[✍️ Synthesis Agent<br/>Answer Generation]
-            TOOL[🛠️ Tool Agent<br/>Actions & Execution]
-        end
-
-        subgraph Skills["Skills & Tools"]
-            VSEARCH[Vector Search]
-            WEBSEARCH[Web Search]
-            CALC[Calculator]
-            DATETIME[Date/Time]
-            EXECUTOR[Code Executor]
-        end
-
-        subgraph REAC["REAC Loop - Each Agent"]
-            THINK[💭 Think<br/>Plan Strategy]
-            ACT[⚡ Act<br/>Execute/Retrieve]
-            OBSERVE[👁️ Observe<br/>Collect Results]
-            REFLECT[🤔 Reflect<br/>Evaluate Quality]
-            EVALUATE[⚖️ Evaluate<br/>Sufficient?]
-            ANSWER[💬 Answer<br/>Generate Response]
-        end
+    subgraph Skills["Skills & Tools"]
+      VSEARCH[Vector Search]
+      WEBSEARCH[Web Search]
+      CALC[Calculator]
+      DATETIME[Date/Time]
+      EXECUTOR[Code Executor]
     end
 
-    subgraph DataSources["📁 Data Sources"]
-        subgraph Connectors["63 Enterprise Connectors"]
-            SALES["💼 Sales & CRM<br/>Salesforce • HubSpot • Gong"]
-            COLLAB["💬 Communication<br/>Teams • Slack • Gmail"]
-            DOCS["📚 Knowledge<br/>SharePoint • Confluence • Notion"]
-            TICKETS["🎫 Ticketing<br/>Jira • Zendesk • ServiceNow"]
-            FILES["☁️ Cloud Storage<br/>Google Drive • OneDrive • Dropbox"]
-            ERP["🏢 ERP & Finance<br/>SAP • Workday • QuickBooks"]
-        end
+    subgraph REAC["REAC Loop - Each Agent"]
+      THINK[💭 Think<br/>Plan Strategy]
+      ACT[⚡ Act<br/>Execute/Retrieve]
+      OBSERVE[👁️ Observe<br/>Collect Results]
+      REFLECT[🤔 Reflect<br/>Evaluate Quality]
+      EVALUATE[⚖️ Evaluate<br/>Sufficient?]
+      ANSWER[💬 Answer<br/>Generate Response]
+    end
+  end
 
-        VECTORDB[(Qdrant<br/>Vector Store)]
-        RDBMS[(PostgreSQL<br/>Metadata)]
+  %% Data sources tightened + vertical connectors list
+  subgraph DataSources["📁 Data Sources"]
+    subgraph Connectors["Enterprise Connectors (examples)"]
+      SALES["💼 Sales & CRM<br/>Salesforce • HubSpot"]
+      COLLAB["💬 Communication<br/>Teams • Slack"]
+      DOCS["📚 Knowledge<br/>SharePoint • Confluence"]
+      TICKETS["🎫 Ticketing<br/>Jira • Zendesk"]
+      FILES["☁️ Cloud Storage<br/>Drive • OneDrive"]
+      ERP["🏢 ERP & Finance<br/>SAP • Workday"]
     end
 
-    CLIENT --> MANAGER
+    VECTORDB[(Qdrant<br/>Vector Store)]
+    RDBMS[(PostgreSQL<br/>Metadata)]
+  end
 
-    MANAGER -.->|Coordinates| RETRIEVAL
-    MANAGER -.->|Coordinates| ANALYSIS
-    MANAGER -.->|Coordinates| SYNTHESIS
-    MANAGER -.->|Coordinates| TOOL
+  %% Flow
+  CLIENT --> MANAGER
 
-    RETRIEVAL & ANALYSIS & SYNTHESIS & TOOL -.->|Uses| Skills
+  MANAGER -.->|Coordinates| RETRIEVAL
+  MANAGER -.->|Coordinates| ANALYSIS
+  MANAGER -.->|Coordinates| SYNTHESIS
+  MANAGER -.->|Coordinates| TOOL
 
-    Agents -->|Query Data| DataSources
+  RETRIEVAL & ANALYSIS & SYNTHESIS & TOOL -.->|Uses| Skills
 
-    THINK --> ACT
-    ACT --> OBSERVE
-    OBSERVE --> REFLECT
-    REFLECT --> EVALUATE
-    EVALUATE -->|No| THINK
-    EVALUATE -->|Yes| ANSWER
+  Agents -->|Query Data| DataSources
 
-    style MANAGER fill:#ff9800,stroke:#e65100,stroke-width:3px
-    style REAC fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
-    style DataSources fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    style AgentCore fill:#fff3e0,stroke:#e65100,stroke-width:2px
+  THINK --> ACT --> OBSERVE --> REFLECT --> EVALUATE
+  EVALUATE -->|No| THINK
+  EVALUATE -->|Yes| ANSWER
+
+  %% Make DataSources visually compact
+  style MANAGER fill:#ff9800,stroke:#e65100,stroke-width:3px
+  style REAC fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+  style DataSources fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+  style AgentCore fill:#fff3e0,stroke:#e65100,stroke-width:2px
+
+  %% Keep the connectors column narrow
+  style Connectors fill:#ffffff,stroke:#7b1fa2,stroke-width:1px
+
 ```
 
 **Key Concepts:**
