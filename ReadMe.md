@@ -164,13 +164,17 @@ flowchart TB
   %% =========================
 
   subgraph User["👤 User Interface"]
+    direction TB
     CLIENT[Web / API / Bot]
   end
 
   subgraph AgentCore["🧠 Agent Core - Semantic Kernel"]
+    direction TB
+
     MANAGER[🎯 Manager Agent<br/>Magentic Coordinator]
 
     subgraph Agents["Specialist Agents"]
+      direction TB
       RETRIEVAL[🔍 Retrieval Agent<br/>Search & Context]
       ANALYSIS[📊 Analysis Agent<br/>Data Processing]
       SYNTHESIS[✍️ Synthesis Agent<br/>Answer Generation]
@@ -178,6 +182,7 @@ flowchart TB
     end
 
     subgraph Skills["Skills & Tools"]
+      direction TB
       VSEARCH[Vector Search]
       WEBSEARCH[Web Search]
       CALC[Calculator]
@@ -186,18 +191,20 @@ flowchart TB
     end
 
     subgraph REAC["REAC Loop - Each Agent"]
-      THINK[💭 Think<br/>Plan Strategy]
-      ACT[⚡ Act<br/>Execute/Retrieve]
-      OBSERVE[👁️ Observe<br/>Collect Results]
-      REFLECT[🤔 Reflect<br/>Evaluate Quality]
-      EVALUATE[⚖️ Evaluate<br/>Sufficient?]
-      ANSWER[💬 Answer<br/>Generate Response]
+      direction LR
+      THINK[💭 Think<br/>Plan Strategy] --> ACT[⚡ Act<br/>Execute/Retrieve] --> OBSERVE[👁️ Observe<br/>Collect Results]
+      OBSERVE --> REFLECT[🤔 Reflect<br/>Evaluate Quality] --> EVALUATE[⚖️ Evaluate<br/>Sufficient?]
+      EVALUATE -->|No| THINK
+      EVALUATE -->|Yes| ANSWER[💬 Answer<br/>Generate Response]
     end
   end
 
-  %% Data sources tightened + vertical connectors list
+  %% Data sources tightened + VERTICAL connectors list
   subgraph DataSources["📁 Data Sources"]
+    direction TB
+
     subgraph Connectors["Enterprise Connectors (examples)"]
+      direction TB
       SALES["💼 Sales & CRM<br/>Salesforce • HubSpot"]
       COLLAB["💬 Communication<br/>Teams • Slack"]
       DOCS["📚 Knowledge<br/>SharePoint • Confluence"]
@@ -219,20 +226,13 @@ flowchart TB
   MANAGER -.->|Coordinates| TOOL
 
   RETRIEVAL & ANALYSIS & SYNTHESIS & TOOL -.->|Uses| Skills
-
   Agents -->|Query Data| DataSources
 
-  THINK --> ACT --> OBSERVE --> REFLECT --> EVALUATE
-  EVALUATE -->|No| THINK
-  EVALUATE -->|Yes| ANSWER
-
-  %% Make DataSources visually compact
+  %% Styling
   style MANAGER fill:#ff9800,stroke:#e65100,stroke-width:3px
   style REAC fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
   style DataSources fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
   style AgentCore fill:#fff3e0,stroke:#e65100,stroke-width:2px
-
-  %% Keep the connectors column narrow
   style Connectors fill:#ffffff,stroke:#7b1fa2,stroke-width:1px
 
 ```
