@@ -84,7 +84,7 @@ class PermissionChecker:
         Returns:
             True if user has echomind-allowed or higher role.
         """
-        return ROLE_ALLOWED in user.roles or ROLE_ADMIN in user.roles
+        return ROLE_ALLOWED in user.groups or ROLE_ADMIN in user.groups
 
     def is_admin(self, user: "TokenUser") -> bool:
         """
@@ -96,7 +96,7 @@ class PermissionChecker:
         Returns:
             True if user has echomind-admins role.
         """
-        return ROLE_ADMIN in user.roles
+        return ROLE_ADMIN in user.groups
 
     # =========================================================================
     # Team Helpers
