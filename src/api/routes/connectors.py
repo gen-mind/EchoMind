@@ -13,6 +13,7 @@ from api.logic.connector_service import ConnectorService
 from echomind_lib.models.public import (
     Connector,
     ConnectorScope,
+    ConnectorType,
     CreateConnectorRequest,
     ListConnectorsResponse,
     UpdateConnectorRequest,
@@ -21,6 +22,35 @@ from echomind_lib.models.public import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _type_to_db_string(type_enum: "ConnectorType | None") -> str:
+    """
+    Convert ConnectorType enum to database string.
+
+    The database stores connector types as lowercase strings (e.g., "google_drive"),
+    NOT as protobuf enum names (e.g., "CONNECTOR_TYPE_GOOGLE_DRIVE").
+
+    Args:
+        type_enum: The ConnectorType enum value.
+
+    Returns:
+        Canonical type string (google_drive, teams, etc.) for database storage.
+    """
+    if type_enum is None or type_enum == ConnectorType.CONNECTOR_TYPE_UNSPECIFIED:
+        return "unspecified"
+
+    mapping = {
+        ConnectorType.CONNECTOR_TYPE_TEAMS: "teams",
+        ConnectorType.CONNECTOR_TYPE_GOOGLE_DRIVE: "google_drive",
+        ConnectorType.CONNECTOR_TYPE_ONEDRIVE: "onedrive",
+        ConnectorType.CONNECTOR_TYPE_WEB: "web",
+        ConnectorType.CONNECTOR_TYPE_FILE: "file",
+        ConnectorType.CONNECTOR_TYPE_GMAIL: "gmail",
+        ConnectorType.CONNECTOR_TYPE_GOOGLE_CALENDAR: "google_calendar",
+        ConnectorType.CONNECTOR_TYPE_GOOGLE_CONTACTS: "google_contacts",
+    }
+    return mapping.get(type_enum, "unspecified")
 
 
 def _scope_to_db_string(scope: "ConnectorScope | None") -> str | None:
@@ -148,7 +178,7 @@ async def create_connector(
 
     connector = await service.create_connector(
         name=data.name,
-        connector_type=data.type.name if data.type else "unspecified",
+        connector_type=_type_to_db_string(data.type),
         user=user,
         config=data.config,
         refresh_freq_minutes=data.refresh_freq_minutes,
